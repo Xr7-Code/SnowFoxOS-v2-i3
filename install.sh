@@ -181,6 +181,8 @@ apt-get install -y \
     fonts-noto-color-emoji \
     fonts-font-awesome \
     papirus-icon-theme \
+    adwaita-icon-theme \
+    xsettingsd \
     lxappearance \
     picom \
     xss-lock \
