@@ -442,32 +442,34 @@ success "Branding & Boot-Screen bereit"
 step "10/10 — Konfiguration & Neofetch"
 
 CONFIG_DIR="$TARGET_HOME/.config"
-# Erstelle alle notwendigen Verzeichnisse (Inklusive Bilder/Wallpapers)
-mkdir -p "$CONFIG_DIR/i3" \
-         "$CONFIG_DIR/polybar" \
-         "$CONFIG_DIR/rofi" \
-         "$CONFIG_DIR/neofetch" \
-         "$TARGET_HOME/Pictures/wallpapers"
+
+# Verzeichnisse erstellen
+mkdir -p "$CONFIG_DIR"
+mkdir -p "$TARGET_HOME/Pictures/wallpapers"
+
+# WICHTIG: Falls xsettingsd eine Datei ist, löschen wir sie, 
+# damit der Ordner aus dem Repo kopiert werden kann.
+[[ -f "$CONFIG_DIR/xsettingsd" ]] && rm -f "$CONFIG_DIR/xsettingsd"
 
 # Configs aus dem Repo kopieren
 if [[ -d "$SCRIPT_DIR/configs" ]]; then
+    # Wir kopieren den INHALT von configs/ in ~/.config/
     cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
     success "Konfigurationsdateien kopiert"
 else
     warn "Kein 'configs' Ordner im Repo gefunden!"
 fi
 
-# Wallpaper-Fix: Explizites Kopieren des Wallpapers
+# Wallpaper-Fix
 if [[ -d "$SCRIPT_DIR/wallpapers" ]]; then
     cp "$SCRIPT_DIR/wallpapers/"* "$TARGET_HOME/Pictures/wallpapers/" 2>/dev/null || true
-    success "Wallpapers in den Bilder-Ordner kopiert"
-else
-    warn "Kein 'wallpapers' Ordner im Repo gefunden!"
+    success "Wallpapers kopiert"
 fi
 
-# Neofetch Logo (Der Fuchs)
+# Neofetch Logo
+mkdir -p "$CONFIG_DIR/neofetch"
 cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
-                .... .....-           
+                .... .....-            
    ..      ... ..- ........        
    :@..........@-:...........=     
    ::-...........: :...........    
@@ -489,7 +491,9 @@ BAT_NAME="BAT0"
 for bat in /sys/class/power_supply/BAT*; do
     [[ -d "$bat" ]] && BAT_NAME=$(basename "$bat") && break
 done
-sed -i "s/^battery = BAT.*/battery = $BAT_NAME/" "$CONFIG_DIR/polybar/config.ini" 2>/dev/null || true
+if [[ -f "$CONFIG_DIR/polybar/config.ini" ]]; then
+    sed -i "s/^battery = BAT.*/battery = $BAT_NAME/" "$CONFIG_DIR/polybar/config.ini" 2>/dev/null || true
+fi
 
 # snowfox CLI & Greeting
 cp "$SCRIPT_DIR/snowfox" /usr/local/bin/snowfox 2>/dev/null || true
@@ -503,9 +507,8 @@ if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
     echo '[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
-# GTK2 Theme-Fix (wird direkt im Home benötigt)
+# GTK2 Theme-Fix (Arc-Dark)
 cat > "$TARGET_HOME/.gtkrc-2.0" << 'EOF'
-# WICHTIG: Pfad muss zum installierten Theme passen
 include "/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc"
 gtk-theme-name="Arc-Dark"
 gtk-icon-theme-name="Papirus-Dark"
@@ -513,12 +516,9 @@ gtk-font-name="Sans 10"
 gtk-cursor-theme-name="Adwaita"
 EOF
 
-# Berechtigungen für die neue Datei setzen
-chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.gtkrc-2.0"
-
-# Berechtigungen fixen (WICHTIG für Thunar/GTK Zugriff)
+# Finale Berechtigungen (WICHTIG)
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
-
+success "Berechtigungen für $TARGET_USER gesetzt"
 # ============================================================
 # Fertig!
 # ============================================================
