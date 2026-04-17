@@ -187,21 +187,26 @@ apt-get install -y \
     xserver-xorg-input-libinput
 
 # Touchpad Konfiguration
+# Touchpad Konfiguration sicherstellen
 mkdir -p /etc/X11/xorg.conf.d
+
 if [[ -f "$SCRIPT_DIR/configs/xorg/30-touchpad.conf" ]]; then
     cp "$SCRIPT_DIR/configs/xorg/30-touchpad.conf" /etc/X11/xorg.conf.d/30-touchpad.conf
+    info "Touchpad-Config aus Repo kopiert"
 else
+    # Fallback: Erstelle eine funktionierende Standard-Config
     cat > /etc/X11/xorg.conf.d/30-touchpad.conf << 'EOF'
 Section "InputClass"
-    Identifier "touchpad"
-    MatchIsTouchpad "on"
+    Identifier "devname"
     Driver "libinput"
+    MatchIsTouchpad "on"
     Option "Tapping" "on"
+    Option "ClickMethod" "clickfinger"
     Option "NaturalScrolling" "true"
 EndSection
 EOF
+    info "Standard-Touchpad-Config (Tapping/Natural Scroll) erstellt"
 fi
-success "Touchpad konfiguriert"
 
 # i3 startet automatisch von TTY1
 BASH_PROFILE="$TARGET_HOME/.bash_profile"
