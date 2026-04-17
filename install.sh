@@ -181,10 +181,10 @@ apt-get install -y \
     fonts-noto-color-emoji \
     fonts-font-awesome \
     papirus-icon-theme \
-    adwaita-icon-theme \
+    arc-theme \
     xsettingsd \
-    lxappearance \
     lxpolkit \
+    lxappearance \
     picom \
     xss-lock \
     xserver-xorg-input-libinput
@@ -507,8 +507,8 @@ fi
 
 # GTK2 Theme-Fix (wird direkt im Home benötigt)
 cat > "$TARGET_HOME/.gtkrc-2.0" << 'EOF'
-include "/usr/share/themes/Adwaita-dark/gtk-2.0/gtkrc"
-gtk-theme-name="Adwaita-dark"
+include "/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc"
+gtk-theme-name="Arc-Dark"
 gtk-icon-theme-name="Papirus-Dark"
 gtk-font-name="Sans 10"
 gtk-cursor-theme-name="Adwaita"
