@@ -34,14 +34,21 @@ smart_gaps on
 smart_borders on
 
 # ── Autostart ───────────────────────────────────────────────
-exec_always --no-startup-id ~/.config/polybar/launch.sh
+
 exec_always --no-startup-id feh --bg-scale ~/Pictures/wallpapers/wallpaper.jpg
+
+exec_always --no-startup-id picom --backend glx --vsync &
+
+exec_always --no-startup-id ~/.config/polybar/launch.sh
 exec --no-startup-id dunst
+
 exec --no-startup-id nm-applet
 exec --no-startup-id redshift
-exec --no-startup-id picom --daemon
+
 exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 2>/dev/null || true
+
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork -c 000000
+
 exec --no-startup-id xautolock -time 5 -locker "~/.config/snowfox-lock.sh" -notify 10 -notifier "notify-send 'SnowFox' 'Bildschirm wird in 10 Sekunden gesperrt'"
 
 # ── Keyboard Shortcuts ──────────────────────────────────────
