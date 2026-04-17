@@ -184,6 +184,7 @@ apt-get install -y \
     adwaita-icon-theme \
     xsettingsd \
     lxappearance \
+    lxpolkit \
     picom \
     xss-lock \
     xserver-xorg-input-libinput
