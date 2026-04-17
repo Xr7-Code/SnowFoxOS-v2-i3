@@ -42,6 +42,8 @@ exec_always --no-startup-id picom --backend glx --vsync &
 exec_always --no-startup-id ~/.config/polybar/launch.sh
 exec --no-startup-id dunst
 
+exec --no-startup-id xsettingsd &
+
 exec --no-startup-id nm-applet
 exec --no-startup-id redshift
 
