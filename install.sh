@@ -308,6 +308,25 @@ if [[ "$INSTALL_VSCODIUM" =~ ^[jJ]$ ]]; then
     set -e
 fi
 
+# OnlyOffice
+echo ""
+read -rp "$(echo -e ${PURPLE}${BOLD}"[SnowFox] OnlyOffice installieren? [j/n]: "${RESET})" INSTALL_ONLYOFFICE
+if [[ "$INSTALL_ONLYOFFICE" =~ ^[jJ]$ ]]; then
+    info "Installiere OnlyOffice Repository..."
+    set +e
+    # GPG Key herunterladen
+    mkdir -p -m 755 /etc/apt/keyrings
+    curl -fsSL https://download.onlyoffice.com/GPG-KEY-ONLYOFFICE | gpg --dearmor -o /etc/apt/keyrings/onlyoffice.gpg
+    
+    # Repository hinzufügen
+    echo "deb [signed-by=/etc/apt/keyrings/onlyoffice.gpg] https://download.onlyoffice.com/repo/debian squeeze main" \
+        | tee /etc/apt/sources.list.d/onlyoffice.list
+    
+    apt-get update -qq
+    apt-get install -y onlyoffice-desktopeditors && success "OnlyOffice installiert" || warn "OnlyOffice fehlgeschlagen"
+    set -e
+fi
+
 # yt-dlp
 curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
     -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
