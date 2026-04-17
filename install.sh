@@ -520,6 +520,9 @@ chmod +x /usr/local/bin/snowfox 2>/dev/null || true
 cp "$SCRIPT_DIR/snowfox-greeting.sh" /usr/local/bin/snowfox-greeting 2>/dev/null || true
 chmod +x /usr/local/bin/snowfox-greeting 2>/dev/null || true
 
+# Netzwerk-Script ausführbar machen
+chmod +x "$CONFIG_DIR/snowfox-network.sh" 2>/dev/null || true
+
 if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
     echo '' >> "$TARGET_HOME/.bashrc"
     echo '# SnowFoxOS Greeting' >> "$TARGET_HOME/.bashrc"
