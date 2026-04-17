@@ -503,10 +503,9 @@ if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
     echo '[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
-# Am Ende von Schritt 10/10 einfügen:
-
 # GTK2 Theme-Fix (wird direkt im Home benötigt)
 cat > "$TARGET_HOME/.gtkrc-2.0" << 'EOF'
+# WICHTIG: Pfad muss zum installierten Theme passen
 include "/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc"
 gtk-theme-name="Arc-Dark"
 gtk-icon-theme-name="Papirus-Dark"
