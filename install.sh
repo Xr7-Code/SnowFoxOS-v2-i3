@@ -429,15 +429,33 @@ echo "snowfox" > /etc/hostname
 success "Branding & Boot-Screen bereit"
 
 # ============================================================
-# SCHRITT 10 — Konfiguration & Neofetch
+# SCHRITT 10 — Konfiguration & Branding
 # ============================================================
 step "10/10 — Konfiguration & Neofetch"
 
 CONFIG_DIR="$TARGET_HOME/.config"
-mkdir -p "$CONFIG_DIR/i3" "$CONFIG_DIR/polybar" "$CONFIG_DIR/rofi" "$CONFIG_DIR/neofetch"
+# Erstelle alle notwendigen Verzeichnisse (Inklusive Bilder/Wallpapers)
+mkdir -p "$CONFIG_DIR/i3" \
+         "$CONFIG_DIR/polybar" \
+         "$CONFIG_DIR/rofi" \
+         "$CONFIG_DIR/neofetch" \
+         "$TARGET_HOME/Pictures/wallpapers"
 
-# Configs kopieren
-[[ -d "$SCRIPT_DIR/configs" ]] && cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/" || true
+# Configs aus dem Repo kopieren
+if [[ -d "$SCRIPT_DIR/configs" ]]; then
+    cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
+    success "Konfigurationsdateien kopiert"
+else
+    warn "Kein 'configs' Ordner im Repo gefunden!"
+fi
+
+# Wallpaper-Fix: Explizites Kopieren des Wallpapers
+if [[ -d "$SCRIPT_DIR/wallpapers" ]]; then
+    cp "$SCRIPT_DIR/wallpapers/"* "$TARGET_HOME/Pictures/wallpapers/" 2>/dev/null || true
+    success "Wallpapers in den Bilder-Ordner kopiert"
+else
+    warn "Kein 'wallpapers' Ordner im Repo gefunden!"
+fi
 
 # Neofetch Logo (Der Fuchs)
 cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
@@ -471,11 +489,13 @@ chmod +x /usr/local/bin/snowfox 2>/dev/null || true
 cp "$SCRIPT_DIR/snowfox-greeting.sh" /usr/local/bin/snowfox-greeting 2>/dev/null || true
 chmod +x /usr/local/bin/snowfox-greeting 2>/dev/null || true
 
-if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc"; then
+if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
+    echo '' >> "$TARGET_HOME/.bashrc"
+    echo '# SnowFoxOS Greeting' >> "$TARGET_HOME/.bashrc"
     echo '[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
-# Berechtigungen fixen
+# Berechtigungen fixen (WICHTIG für Thunar/GTK Zugriff)
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
 
 # ============================================================
