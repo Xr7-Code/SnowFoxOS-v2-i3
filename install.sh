@@ -538,6 +538,17 @@ gtk-font-name="Sans 10"
 gtk-cursor-theme-name="Adwaita"
 EOF
 
+# GTK3 Theme-Fix
+mkdir -p "$CONFIG_DIR/gtk-3.0"
+cat > "$CONFIG_DIR/gtk-3.0/settings.ini" << 'EOF'
+[Settings]
+gtk-theme-name=Arc-Dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-font-name=Sans 10
+gtk-cursor-theme-name=Adwaita
+gtk-application-prefer-dark-theme=true
+EOF
+
 # Finale Berechtigungen (WICHTIG)
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
 success "Berechtigungen für $TARGET_USER gesetzt"
