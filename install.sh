@@ -474,9 +474,14 @@ success "Branding & Boot-Screen bereit"
 # ============================================================
 step "10/10 — Konfiguration & Neofetch"
 
+# WICHTIG: Variable ZUERST definieren
 CONFIG_DIR="$TARGET_HOME/.config"
 
-# OS-Name & Neofetch Identität
+# Verzeichnisse erstellen
+mkdir -p "$CONFIG_DIR/neofetch"
+mkdir -p "$TARGET_HOME/Pictures/wallpapers"
+
+# OS-Name & Neofetch Identität (Überschreibt Debian-Standard)
 cat > /etc/os-release << 'EOF'
 PRETTY_NAME="SnowFoxOS 2.1"
 NAME="SnowFoxOS"
@@ -486,35 +491,33 @@ ANSI_COLOR="0;35"
 EOF
 
 echo "snowfox" > /etc/hostname
+echo "SnowFoxOS 2.1" > /etc/issue
 
-# Verzeichnisse erstellen
-mkdir -p "$CONFIG_DIR"
-mkdir -p "$TARGET_HOME/Pictures/wallpapers"
+# Neofetch global konfigurieren
+cat > "$CONFIG_DIR/neofetch/config.conf" << EOF
+print_info() {
+    info title
+    info underline
+    info "OS" distro
+    info "Kernel" kernel
+    info "Uptime" uptime
+    info "Packages" packages
+    info "Shell" shell
+    info "Resolution" resolution
+    info "WM" wm
+    info "CPU" cpu
+    info "GPU" gpu
+    info "Memory" memory
+}
+image_backend="ascii"
+image_source="$CONFIG_DIR/neofetch/snowfox.txt"
+ascii_colors=(5 7)
+EOF
 
-# WICHTIG: Falls xsettingsd eine Datei ist, löschen wir sie, 
-# damit der Ordner aus dem Repo kopiert werden kann.
-[[ -f "$CONFIG_DIR/xsettingsd" ]] && rm -f "$CONFIG_DIR/xsettingsd"
-
-# Configs aus dem Repo kopieren
-if [[ -d "$SCRIPT_DIR/configs" ]]; then
-    # Wir kopieren den INHALT von configs/ in ~/.config/
-    cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
-    success "Konfigurationsdateien kopiert"
-else
-    warn "Kein 'configs' Ordner im Repo gefunden!"
-fi
-
-# Wallpaper-Fix
-if [[ -d "$SCRIPT_DIR/wallpapers" ]]; then
-    cp "$SCRIPT_DIR/wallpapers/"* "$TARGET_HOME/Pictures/wallpapers/" 2>/dev/null || true
-    success "Wallpapers kopiert"
-fi
-
-# Neofetch Logo
-mkdir -p "$CONFIG_DIR/neofetch"
+# Neofetch ASCII Logo
 cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
                 .... .....-            
-   ..      ... ..- ........        
+   ..       ... ..- ........        
    :@..........@-:...........=     
    ::-...........: :...........    
    ............... -::: ........   
@@ -530,14 +533,25 @@ cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
               ----------           
 ASCIIEOF
 
-# Akku Check für Polybar
-BAT_NAME="BAT0"
-for bat in /sys/class/power_supply/BAT*; do
-    [[ -d "$bat" ]] && BAT_NAME=$(basename "$bat") && break
-done
-if [[ -f "$CONFIG_DIR/polybar/config.ini" ]]; then
-    sed -i "s/^battery = BAT.*/battery = $BAT_NAME/" "$CONFIG_DIR/polybar/config.ini" 2>/dev/null || true
+# Configs aus dem Repo kopieren
+[[ -f "$CONFIG_DIR/xsettingsd" ]] && rm -f "$CONFIG_DIR/xsettingsd"
+if [[ -d "$SCRIPT_DIR/configs" ]]; then
+    cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
+    success "Konfigurationsdateien kopiert"
 fi
+
+# Power-Menü Script erstellen (Falls nicht im Repo)
+cat > "/usr/local/bin/snowfox-powermenu" << 'EOF'
+#!/bin/bash
+chosen=$(echo -e " Beenden\n Neustart\n Standby\n Sperren" | rofi -dmenu -i -p "SnowFox Power:" -theme ~/.config/rofi/config.rasi)
+case "$chosen" in
+    " Beenden") poweroff ;;
+    " Neustart") reboot ;;
+    " Standby") systemctl suspend ;;
+    " Sperren") i3lock -c 0f0f0f ;;
+esac
+EOF
+chmod +x /usr/local/bin/snowfox-powermenu
 
 # snowfox CLI & Greeting
 cp "$SCRIPT_DIR/snowfox" /usr/local/bin/snowfox 2>/dev/null || true
@@ -545,38 +559,14 @@ chmod +x /usr/local/bin/snowfox 2>/dev/null || true
 cp "$SCRIPT_DIR/snowfox-greeting.sh" /usr/local/bin/snowfox-greeting 2>/dev/null || true
 chmod +x /usr/local/bin/snowfox-greeting 2>/dev/null || true
 
-# Netzwerk-Script ausführbar machen
-chmod +x "$CONFIG_DIR/snowfox-network.sh" 2>/dev/null || true
-
+# Autostart Greeting in .bashrc
 if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
-    echo '' >> "$TARGET_HOME/.bashrc"
-    echo '# SnowFoxOS Greeting' >> "$TARGET_HOME/.bashrc"
-    echo '[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
+    echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
-# GTK2 Theme-Fix (Arc-Dark)
-cat > "$TARGET_HOME/.gtkrc-2.0" << 'EOF'
-include "/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc"
-gtk-theme-name="Arc-Dark"
-gtk-icon-theme-name="Papirus-Dark"
-gtk-font-name="Sans 10"
-gtk-cursor-theme-name="Adwaita"
-EOF
-
-# GTK3 Theme-Fix
-mkdir -p "$CONFIG_DIR/gtk-3.0"
-cat > "$CONFIG_DIR/gtk-3.0/settings.ini" << 'EOF'
-[Settings]
-gtk-theme-name=Arc-Dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-font-name=Sans 10
-gtk-cursor-theme-name=Adwaita
-gtk-application-prefer-dark-theme=true
-EOF
-
-# Finale Berechtigungen (WICHTIG)
+# Finale Berechtigungen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
-success "Berechtigungen für $TARGET_USER gesetzt"
+
 # ============================================================
 # Fertig!
 # ============================================================
