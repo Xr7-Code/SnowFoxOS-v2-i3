@@ -91,12 +91,24 @@ fi
 
 success "System aktualisiert"
 
+# ============================================================
+# PERFORMANCE KERNEL (XanMod) — FIX
+# ============================================================
 echo ""
 read -rp "$(echo -e ${PURPLE}${BOLD}"[SnowFox] Performance-Kernel (XanMod) installieren? [j/n]: "${RESET})" INSTALL_KERNEL
 if [[ "$INSTALL_KERNEL" =~ ^[jJ]$ ]]; then
     info "Installiere XanMod Repository & Kernel..."
-    curl -s https://dl.xanmod.org/archive.key | gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg
+    
+    # Sicherstellen, dass die nötigen Tools da sind
+    apt-get install -y curl gnupg
+    
+    # Den Key sauber herunterladen und dearmoren
+    # Wir nutzen eine temporäre Datei, um "Keine gültigen Daten"-Fehler zu vermeiden
+    curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
+    
+    # Das Repository mit dem korrekten Key-Verweis hinzufügen
     echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' | tee /etc/apt/sources.list.d/xanmod-kernel.list
+    
     apt-get update -qq && apt-get install -y linux-xanmod-x64v3
     success "Performance-Kernel bereit (aktiv nach Reboot)"
 fi
