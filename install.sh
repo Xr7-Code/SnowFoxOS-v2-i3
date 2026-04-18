@@ -104,34 +104,36 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
-# Performance-Kernel (XanMod)
-if ask_install "Performance-Kernel (XanMod)"; then
-    info "Installiere XanMod Repository & Kernel..."
-    curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
-    echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
-        | tee /etc/apt/sources.list.d/xanmod-kernel.list
-    apt-get update -qq
+# XanMod LTS Kernel — immer installiert, kein optionaler Skip
+# XanMod LTS 6.12/6.18 = stabil, NVIDIA-kompatibel, alle XanMod-Optimierungen (BBR3, futex2, x64v3)
+info "Installiere XanMod LTS Kernel..."
+curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
+echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
+    | tee /etc/apt/sources.list.d/xanmod-kernel.list
+apt-get update -qq
 
-    # DKMS-Hooks sind bereits global deaktiviert (seit Beginn von Schritt 1).
-    set +e
-    DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
-    XANMOD_EXIT=$?
-    set -e
+set +e
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3
+XANMOD_EXIT=$?
+set -e
 
-    if [[ $XANMOD_EXIT -eq 0 ]]; then
-        success "Performance-Kernel bereit (aktiv nach Reboot)"
-    else
-        warn "XanMod-Kernel-Installation schlug fehl (Exit $XANMOD_EXIT)."
-        warn "Bitte manuell pruefen: apt-get install linux-xanmod-x64v3"
-        warn "Installation wird fortgesetzt..."
-    fi
-
-    # NVIDIA-Hinweis: DKMS-Module nach Reboot in XanMod manuell nachbauen
-    if lspci | grep -qi nvidia; then
-        warn "NVIDIA erkannt: Nach dem ersten Reboot in den XanMod-Kernel bitte ausfuehren:"
-        warn "  sudo dkms autoinstall -k \$(uname -r)"
-    fi
+if [[ $XANMOD_EXIT -eq 0 ]]; then
+    success "XanMod LTS Kernel installiert (aktiv nach Reboot)"
+else
+    warn "XanMod LTS Installation schlug fehl (Exit $XANMOD_EXIT) — Installation wird fortgesetzt..."
 fi
+
+# Alte Debian-Kernel entfernen — SnowFoxOS nutzt nur XanMod
+info "Entferne alte Debian-Kernel..."
+set +e
+CURRENT_KERNEL=$(uname -r)
+for pkg in $(dpkg --list | grep "linux-image-[0-9]" | awk '{print $2}' | grep -v "$CURRENT_KERNEL" | grep -v "xanmod"); do
+    apt-get purge -y "$pkg" 2>/dev/null || true
+done
+apt-get autoremove -y 2>/dev/null || true
+update-grub 2>/dev/null || true
+set -e
+success "Alte Kernel entfernt"
 
 # Fritz USB AC 860 Treiber (mt76x2u)
 info "Prüfe Fritz USB AC 860 Treiber..."
@@ -165,13 +167,26 @@ GPU_INFO=$(lspci | grep -iE 'vga|3d|display')
 if echo "$GPU_INFO" | grep -qi "nvidia"; then
     info "NVIDIA GPU erkannt — Installiere aktuellen Treiber via CUDA-Repo..."
 
-    # clang + lld benoetigt da XanMod mit clang kompiliert wurde —
-    # ohne clang schlaegt der DKMS-Build des NVIDIA-Treibers fehl
-    apt-get install -y clang lld
+    # clang-19 + lld-19 benoetigt:
+    # XanMod LTS wird mit clang kompiliert — DKMS muss exakt dieselbe
+    # LLVM-Version verwenden sonst schlaegt der Linker-Schritt fehl
+    # (Opaque Pointer Mismatch zwischen LLVM 14 und LLVM 19)
+    apt-get install -y clang-19 lld-19
+
+    # clang-19 als Standard setzen
+    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-19 100
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100
+    update-alternatives --install /usr/bin/lld lld /usr/bin/lld-19 100
+    update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/lld-19 100
+    update-alternatives --set clang /usr/bin/clang-19
+    update-alternatives --set lld /usr/bin/lld-19
+    update-alternatives --set ld.lld /usr/bin/lld-19
 
     # Offizielles NVIDIA CUDA-Repo einbinden
-    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub         | gpg --dearmor | tee /usr/share/keyrings/nvidia-cuda-keyring.gpg > /dev/null
-    echo "deb [signed-by=/usr/share/keyrings/nvidia-cuda-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /"         | tee /etc/apt/sources.list.d/nvidia-cuda.list
+    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub \
+        | gpg --dearmor | tee /usr/share/keyrings/nvidia-cuda-keyring.gpg > /dev/null
+    echo "deb [signed-by=/usr/share/keyrings/nvidia-cuda-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /" \
+        | tee /etc/apt/sources.list.d/nvidia-cuda.list
 
     # APT-Pinning: NVIDIA-Pakete kommen aus dem CUDA-Repo,
     # der Rest bleibt auf Debian Stable
@@ -187,19 +202,39 @@ EOF
 
     apt-get update -qq
 
-    # cuda-drivers-570 = stabiler Production Branch
-    # kompatibel mit XanMod + clang 19
-    # inkl. 32-bit Libs fuer Steam & Vulkan
-    apt-get install -y         cuda-drivers-570         libvulkan1 libvulkan1:i386         nvidia-vulkan-icd nvidia-vulkan-icd:i386
+    # Alten Debian NVIDIA-Treiber entfernen falls vorhanden
+    apt-get purge -y nvidia-driver nvidia-kernel-dkms 2>/dev/null || true
 
-    success "NVIDIA Stack installiert (Treiber 570 via CUDA-Repo)"
+    # cuda-drivers-580 = aktueller stabiler Branch
+    # kompatibel mit XanMod LTS + clang-19/lld-19
+    # inkl. 32-bit Libs fuer Steam & Vulkan
+    apt-get install -y \
+        cuda-drivers-580 \
+        libvulkan1 libvulkan1:i386 \
+        nvidia-vulkan-icd nvidia-vulkan-icd:i386
+
+    # DKMS manuell fuer den installierten XanMod-Kernel bauen
+    # (DKMS-Hooks sind waehrend des Installers deaktiviert)
+    XANMOD_KERNEL=$(ls /lib/modules | grep xanmod | sort -V | tail -1)
+    if [[ -n "$XANMOD_KERNEL" ]]; then
+        NVIDIA_VER=$(ls /var/lib/dkms/nvidia/ 2>/dev/null | sort -V | tail -1)
+        if [[ -n "$NVIDIA_VER" ]]; then
+            info "Baue NVIDIA DKMS-Module fuer $XANMOD_KERNEL..."
+            set +e
+            dkms install nvidia/"$NVIDIA_VER" -k "$XANMOD_KERNEL" 2>/dev/null
+            set -e
+            success "NVIDIA DKMS-Module gebaut"
+        fi
+    fi
+
+    success "NVIDIA Stack installiert (CUDA-Repo, clang-19)"
 
 elif echo "$GPU_INFO" | grep -qi "amd"; then
     info "AMD GPU erkannt — Nutze Mesa..."
     apt-get install -y firmware-amd-graphics mesa-vulkan-drivers mesa-va-drivers
     success "AMD Stack installiert"
 else
-    info "Intel Grafik erkannt — Optimiere für Effizienz..."
+    info "Intel Grafik erkannt — Optimiere fuer Effizienz..."
     apt-get install -y intel-media-va-driver-non-free i965-va-driver
     success "Intel Stack installiert"
 fi
