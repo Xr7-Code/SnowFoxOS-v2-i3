@@ -50,6 +50,21 @@ sleep 1
 # ============================================================
 step "1/10 — System aktualisieren"
 
+# DKMS-Hooks global deaktivieren fuer den gesamten Installer-Lauf.
+# Grund: apt-get upgrade kann halbinstallierte Kernel-Pakete aus einem
+# vorherigen fehlgeschlagenen Versuch konfigurieren wollen -- dabei wuerde
+# DKMS sofort feuern und den Installer abbrechen, noch bevor XanMod-Code laeuft.
+# Die Hooks werden am Ende des Installers wiederhergestellt.
+DKMS_HOOKS=(
+    /etc/kernel/postinst.d/dkms
+    /etc/kernel/prerm.d/dkms
+    /usr/lib/kernel/install.d/50-dkms.install
+)
+for hook in "${DKMS_HOOKS[@]}"; do
+    [[ -f "$hook" ]] && mv "$hook" "${hook}.snowfox-bak"
+done
+info "DKMS-Hooks fuer Installer-Lauf deaktiviert"
+
 cat > /etc/apt/sources.list << 'EOF'
 deb http://deb.debian.org/debian/ bookworm main contrib non-free non-free-firmware
 deb-src http://deb.debian.org/debian/ bookworm main contrib non-free non-free-firmware
@@ -61,6 +76,9 @@ EOF
 
 dpkg --add-architecture i386
 apt-get update -qq
+# Halbinstallierte Pakete aus vorherigen Versuchen zuerst bereinigen
+dpkg --configure -a 2>/dev/null || true
+apt-get -f install -y 2>/dev/null || true
 apt-get upgrade -y
 apt-get install -y \
     curl wget git unzip \
@@ -94,30 +112,11 @@ if ask_install "Performance-Kernel (XanMod)"; then
         | tee /etc/apt/sources.list.d/xanmod-kernel.list
     apt-get update -qq
 
-    # DKMS vollstaendig deaktivieren fuer die Dauer der Kernel-Installation.
-    # DKMS versucht sonst NVIDIA-Module fuer den neuen Kernel zu bauen -- schlaegt
-    # bei inkompatiblen Treibern fehl und hinterlaesst dpkg in einem broken state.
-    # Alle drei Hook-Pfade die DKMS nutzt werden gesperrt:
-    DKMS_HOOKS=(
-        /etc/kernel/postinst.d/dkms
-        /etc/kernel/prerm.d/dkms
-        /usr/lib/kernel/install.d/50-dkms.install
-    )
-    for hook in "${DKMS_HOOKS[@]}"; do
-        [[ -f "$hook" ]] && mv "$hook" "${hook}.snowfox-bak"
-    done
-    info "DKMS-Hooks temporaer deaktiviert"
-
+    # DKMS-Hooks sind bereits global deaktiviert (seit Beginn von Schritt 1).
     set +e
     DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
     XANMOD_EXIT=$?
     set -e
-
-    # Alle Hooks sofort wiederherstellen
-    for hook in "${DKMS_HOOKS[@]}"; do
-        [[ -f "${hook}.snowfox-bak" ]] && mv "${hook}.snowfox-bak" "$hook"
-    done
-    info "DKMS-Hooks wiederhergestellt"
 
     if [[ $XANMOD_EXIT -eq 0 ]]; then
         success "Performance-Kernel bereit (aktiv nach Reboot)"
@@ -582,6 +581,12 @@ fi
 
 # Finale Berechtigungen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
+
+# DKMS-Hooks wiederherstellen
+for hook in "${DKMS_HOOKS[@]}"; do
+    [[ -f "${hook}.snowfox-bak" ]] && mv "${hook}.snowfox-bak" "$hook"
+done
+info "DKMS-Hooks wiederhergestellt"
 
 # ============================================================
 # Fertig!
