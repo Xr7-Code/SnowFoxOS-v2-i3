@@ -372,8 +372,6 @@ case "$BROWSER_CHOICE" in
     *) warn "Kein Browser installiert" ;;
 esac
 
-apt-get remove --purge -y firefox-esr 2>/dev/null || true
-
 # ============================================================
 # SCHRITT 7 — Steam
 # ============================================================
