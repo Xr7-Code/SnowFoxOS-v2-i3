@@ -23,6 +23,11 @@ error()   { echo -e "${RED}${BOLD}[FEHLER]${RESET} $1"; exit 1; }
 step()    { echo -e "\n${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}";
             echo -e "${PURPLE}${BOLD}  $1${RESET}";
             echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}\n"; }
+ask_install() {
+    echo ""
+    read -rp "$(echo -e ${PURPLE}${BOLD}"[SnowFox] $1 installieren? [j/n]: "${RESET})" choice
+    [[ "$choice" =~ ^[jJ]$ ]]
+}
 
 if [[ $EUID -ne 0 ]]; then
     error "Bitte mit sudo ausführen: sudo ./install.sh"
@@ -82,35 +87,37 @@ sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
 # Performance-Kernel (XanMod)
-echo ""
-read -rp "$(echo -e ${PURPLE}${BOLD}"[SnowFox] Performance-Kernel (XanMod) installieren? [j/n]: "${RESET})" INSTALL_KERNEL
-if [[ "$INSTALL_KERNEL" =~ ^[jJ]$ ]]; then
+if ask_install "Performance-Kernel (XanMod)"; then
     info "Installiere XanMod Repository & Kernel..."
     curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
     echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
         | tee /etc/apt/sources.list.d/xanmod-kernel.list
     apt-get update -qq
 
-    # DKMS-Hook temporär deaktivieren, damit der NVIDIA-Build-Fehler den
-    # dpkg postinst nicht abbricht und das Kernel-Paket sauber konfiguriert wird.
-    # Der Hook wird danach sofort wiederhergestellt.
-    DKMS_HOOK=/etc/kernel/postinst.d/dkms
-    DKMS_HOOK_BAK=/etc/kernel/postinst.d/dkms.snowfox-disabled
-    if [[ -f "$DKMS_HOOK" ]]; then
-        mv "$DKMS_HOOK" "$DKMS_HOOK_BAK"
-        info "DKMS-Hook temporaer deaktiviert (wird nach Kernel-Install wiederhergestellt)"
-    fi
+    # DKMS vollstaendig deaktivieren fuer die Dauer der Kernel-Installation.
+    # DKMS versucht sonst NVIDIA-Module fuer den neuen Kernel zu bauen -- schlaegt
+    # bei inkompatiblen Treibern fehl und hinterlaesst dpkg in einem broken state.
+    # Alle drei Hook-Pfade die DKMS nutzt werden gesperrt:
+    DKMS_HOOKS=(
+        /etc/kernel/postinst.d/dkms
+        /etc/kernel/prerm.d/dkms
+        /usr/lib/kernel/install.d/50-dkms.install
+    )
+    for hook in "${DKMS_HOOKS[@]}"; do
+        [[ -f "$hook" ]] && mv "$hook" "${hook}.snowfox-bak"
+    done
+    info "DKMS-Hooks temporaer deaktiviert"
 
     set +e
-    apt-get install -y linux-xanmod-x64v3
+    DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
     XANMOD_EXIT=$?
     set -e
 
-    # DKMS-Hook sofort wiederherstellen
-    if [[ -f "$DKMS_HOOK_BAK" ]]; then
-        mv "$DKMS_HOOK_BAK" "$DKMS_HOOK"
-        info "DKMS-Hook wiederhergestellt"
-    fi
+    # Alle Hooks sofort wiederherstellen
+    for hook in "${DKMS_HOOKS[@]}"; do
+        [[ -f "${hook}.snowfox-bak" ]] && mv "${hook}.snowfox-bak" "$hook"
+    done
+    info "DKMS-Hooks wiederhergestellt"
 
     if [[ $XANMOD_EXIT -eq 0 ]]; then
         success "Performance-Kernel bereit (aktiv nach Reboot)"
@@ -120,7 +127,7 @@ if [[ "$INSTALL_KERNEL" =~ ^[jJ]$ ]]; then
         warn "Installation wird fortgesetzt..."
     fi
 
-    # Falls NVIDIA verbaut ist: nach dem Reboot in XanMod die Module neu bauen
+    # NVIDIA-Hinweis: DKMS-Module nach Reboot in XanMod manuell nachbauen
     if lspci | grep -qi nvidia; then
         warn "NVIDIA erkannt: Nach dem ersten Reboot in den XanMod-Kernel bitte ausfuehren:"
         warn "  sudo dkms autoinstall -k \$(uname -r)"
@@ -308,12 +315,6 @@ case "$FM_CHOICE" in
 esac
 
 # Optionale Apps
-ask_install() {
-    echo ""
-    read -rp "$(echo -e ${PURPLE}${BOLD}"[SnowFox] $1 installieren? [j/n]: "${RESET})" choice
-    [[ "$choice" =~ ^[jJ]$ ]]
-}
-
 if ask_install "Firefox-ESR (Stabil)"; then
     apt-get install -y firefox-esr
     success "Firefox-ESR installiert"
