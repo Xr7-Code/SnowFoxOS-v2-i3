@@ -92,62 +92,47 @@ fi
 success "System aktualisiert"
 
 # ============================================================
-# SCHRITT 2 — GPU-Erkennung & Treiber
+# SCHRITT 2 — Intelligente Hardware-Erkennung
 # ============================================================
-step "2/10 — GPU-Erkennung & Treiber"
+step "2/10 — Hardware-Analyse & Treiber"
 
+IS_LAPTOP=false
+[[ "$(cat /sys/class/dmi/id/chassis_type 2>/dev/null)" =~ ^(8|9|10|14)$ ]] && IS_LAPTOP=true
+
+# GPU-Check
 GPU_INFO=$(lspci | grep -iE 'vga|3d|display')
-HAS_NVIDIA=false
-HAS_AMD=false
-HAS_INTEL=false
-IS_HYBRID=false
-
-echo "$GPU_INFO" | grep -qi "nvidia" && HAS_NVIDIA=true && info "Nvidia GPU gefunden"
-echo "$GPU_INFO" | grep -qi "amd\|radeon\|advanced micro" && HAS_AMD=true && info "AMD GPU gefunden"
-echo "$GPU_INFO" | grep -qi "intel" && HAS_INTEL=true && info "Intel GPU gefunden"
-[[ "$HAS_NVIDIA" = true && ( "$HAS_AMD" = true || "$HAS_INTEL" = true ) ]] && IS_HYBRID=true
-
-if $HAS_AMD || $HAS_INTEL; then
-    apt-get install -y \
-        libgl1-mesa-dri libgl1-mesa-dri:i386 \
-        mesa-vulkan-drivers mesa-vulkan-drivers:i386 \
-        mesa-va-drivers mesa-vdpau-drivers 2>/dev/null || true
-    $HAS_AMD && apt-get install -y firmware-amd-graphics 2>/dev/null || true
-    $HAS_INTEL && apt-get install -y intel-media-va-driver xserver-xorg-video-intel 2>/dev/null || true
-    success "Mesa/AMD/Intel Treiber installiert"
+if echo "$GPU_INFO" | grep -qi "nvidia"; then
+    info "NVIDIA GPU erkannt — Optimiere für Gaming & DLSS..."
+    apt-get install -y nvidia-driver nvidia-vulkan-icd nvidia-settings libvulkan1:i386 libvulkan1
+    success "NVIDIA Stack installiert"
+elif echo "$GPU_INFO" | grep -qi "amd"; then
+    info "AMD GPU erkannt — Nutze Mesa..."
+    apt-get install -y firmware-amd-graphics mesa-vulkan-drivers mesa-va-drivers
+    success "AMD Stack installiert"
+else
+    info "Intel Grafik erkannt — Optimiere für Effizienz..."
+    apt-get install -y intel-media-va-driver-non-free i965-va-driver
+    success "Intel Stack installiert"
 fi
 
-if $HAS_NVIDIA; then
-    apt-get install -y linux-headers-$(uname -r) 2>/dev/null || true
-    apt-get install -y \
-        nvidia-driver \
-        nvidia-kernel-dkms \
-        firmware-misc-nonfree \
-        libgbm1 \
-        nvidia-vulkan-icd \
-        nvidia-vulkan-icd:i386 \
-        nvidia-settings 2>/dev/null || true
-
-    cat > /etc/modprobe.d/blacklist-nouveau.conf << 'EOF'
-blacklist nouveau
-options nouveau modeset=0
-install nouveau /bin/false
+# Laptop-Spezifische Optimierung
+if [ "$IS_LAPTOP" = true ]; then
+    info "Laptop erkannt: Installiere Akku- & Touchpad-Tools..."
+    apt-get install -y tlp tlp-rdw thermald xserver-xorg-input-libinput
+    systemctl enable tlp thermald
+    
+    # Touchpad-Tapping & Natural Scrolling (Auto-Config)
+    mkdir -p /etc/X11/xorg.conf.d
+    cat > /etc/X11/xorg.conf.d/40-touchpad.conf << 'EOF'
+Section "InputClass"
+    Identifier "touchpad"
+    MatchIsTouchpad "on"
+    Driver "libinput"
+    Option "Tapping" "on"
+    Option "NaturalScrolling" "true"
+EndSection
 EOF
-    update-initramfs -u -k all 2>/dev/null || true
-    success "Nvidia Treiber installiert"
-fi
-
-if $IS_HYBRID; then
-    apt-get install -y python3 python3-pip
-    pip3 install envycontrol --break-system-packages 2>/dev/null || true
-    if command -v envycontrol &>/dev/null; then
-        envycontrol -s nvidia 2>/dev/null && success "envycontrol: Nvidia-Modus aktiviert" || true
-        warn "Hybrid-GPU: Alle Monitore an die Nvidia-Karte anschließen!"
-    fi
-fi
-
-if ! $HAS_NVIDIA && ! $HAS_AMD && ! $HAS_INTEL; then
-    apt-get install -y libgl1-mesa-dri libgl1-mesa-dri:i386 mesa-vulkan-drivers 2>/dev/null || true
+    success "Laptop-Optimierung abgeschlossen"
 fi
 
 success "GPU-Treiber eingerichtet"
@@ -327,6 +312,22 @@ if [[ "$INSTALL_ONLYOFFICE" =~ ^[jJ]$ ]]; then
     set -e
 fi
 
+# Funktion für saubere Abfragen
+ask_install() {
+    echo ""
+    read -rp "$(echo -e ${PURPLE}${BOLD}"[SnowFox] $1 installieren? [j/n]: "${RESET})" choice
+    if [[ "$choice" =~ ^[jJ]$ ]]; then
+        apt-get install -y $2
+        return 0
+    fi
+    return 1
+}
+
+ask_install "Bluetooth (BlueZ & Manager)" "bluez blueman" && systemctl enable bluetooth
+ask_install "Firefox-ESR (Stabil)" "firefox-esr"
+ask_install "VLC Media Player" "vlc"
+ask_install "GIMP (Bildbearbeitung)" "gimp"
+
 # yt-dlp
 curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
     -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
@@ -406,6 +407,9 @@ for svc in avahi-daemon cups cups-browsed ModemManager bluetooth; do
     systemctl disable "$svc" 2>/dev/null || true
 done
 
+# Power-Button abfangen (ignoriert den harten Shutdown)
+sed -i 's/#HandlePowerKey=.*/HandlePowerKey=ignore/' /etc/systemd/logind.conf
+
 success "Performance optimiert"
 
 # ============================================================
@@ -459,6 +463,40 @@ success "Branding & Boot-Screen bereit"
 # SCHRITT 10 — Konfiguration & Branding
 # ============================================================
 step "10/10 — Konfiguration & Neofetch"
+
+# OS-Name & Neofetch Identität
+cat > /etc/os-release << 'EOF'
+PRETTY_NAME="SnowFoxOS 2.1"
+NAME="SnowFoxOS"
+ID=debian
+ID_LIKE=debian
+ANSI_COLOR="0;35"
+EOF
+
+echo "snowfox" > /etc/hostname
+
+# Neofetch global zwingen das Logo zu nutzen
+mkdir -p "$CONFIG_DIR/neofetch"
+cat > "$CONFIG_DIR/neofetch/config.conf" << EOF
+print_info() {
+    info title
+    info underline
+    info "OS" distro
+    info "Kernel" kernel
+    info "Uptime" uptime
+    info "Packages" packages
+    info "Shell" shell
+    info "Resolution" resolution
+    info "DE" de
+    info "WM" wm
+    info "CPU" cpu
+    info "GPU" gpu
+    info "Memory" memory
+}
+image_backend="ascii"
+image_source="$CONFIG_DIR/neofetch/snowfox.txt"
+ascii_colors=(5 7)
+EOF
 
 CONFIG_DIR="$TARGET_HOME/.config"
 
