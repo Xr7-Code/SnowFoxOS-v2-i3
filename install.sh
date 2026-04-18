@@ -89,8 +89,26 @@ if [[ "$INSTALL_KERNEL" =~ ^[jJ]$ ]]; then
     curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
     echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
         | tee /etc/apt/sources.list.d/xanmod-kernel.list
-    apt-get update -qq && apt-get install -y linux-xanmod-x64v3
-    success "Performance-Kernel bereit (aktiv nach Reboot)"
+    apt-get update -qq
+
+    # DKMS (z.B. NVIDIA) kann beim Bauen für einen neuen Kernel fehlschlagen.
+    # Das ist kein fataler Fehler — der Kernel selbst wird trotzdem installiert.
+    set +e
+    apt-get install -y linux-xanmod-x64v3
+    XANMOD_EXIT=$?
+    set -e
+
+    if [[ $XANMOD_EXIT -eq 0 ]]; then
+        success "Performance-Kernel bereit (aktiv nach Reboot)"
+    else
+        # Kernel wurde installiert, aber DKMS-Module (z.B. NVIDIA) schlugen fehl.
+        # dpkg --configure versucht ausstehende Pakete zu finalisieren — ignoriere Fehler.
+        dpkg --configure -a 2>/dev/null || true
+        warn "XanMod installiert, aber DKMS-Module konnten nicht gebaut werden."
+        warn "Häufige Ursache: NVIDIA-Treiber ist nicht mit dem neuen Kernel kompatibel."
+        warn "Nach dem Reboot in den XanMod-Kernel: sudo apt-get install --reinstall nvidia-driver"
+        warn "Installation wird fortgesetzt..."
+    fi
 fi
 
 # Fritz USB AC 860 Treiber (mt76x2u)
