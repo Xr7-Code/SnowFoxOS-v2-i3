@@ -77,6 +77,8 @@ bindsym $mod+q kill
 bindsym $mod+Shift+r reload
 bindsym $mod+Shift+e exec ~/.config/powermenu.sh
 
+bindsym XF86PowerOff exec --no-startup-id /usr/local/bin/snowfox-powermenu
+
 # ── Fensterverwaltung ───────────────────────────────────────
 bindsym $mod+Left  focus left
 bindsym $mod+Right focus right
