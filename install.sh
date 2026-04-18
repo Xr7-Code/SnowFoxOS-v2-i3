@@ -474,6 +474,8 @@ success "Branding & Boot-Screen bereit"
 # ============================================================
 step "10/10 — Konfiguration & Neofetch"
 
+CONFIG_DIR="$TARGET_HOME/.config"
+
 # OS-Name & Neofetch Identität
 cat > /etc/os-release << 'EOF'
 PRETTY_NAME="SnowFoxOS 2.1"
@@ -484,31 +486,6 @@ ANSI_COLOR="0;35"
 EOF
 
 echo "snowfox" > /etc/hostname
-
-# Neofetch global zwingen das Logo zu nutzen
-mkdir -p "$CONFIG_DIR/neofetch"
-cat > "$CONFIG_DIR/neofetch/config.conf" << EOF
-print_info() {
-    info title
-    info underline
-    info "OS" distro
-    info "Kernel" kernel
-    info "Uptime" uptime
-    info "Packages" packages
-    info "Shell" shell
-    info "Resolution" resolution
-    info "DE" de
-    info "WM" wm
-    info "CPU" cpu
-    info "GPU" gpu
-    info "Memory" memory
-}
-image_backend="ascii"
-image_source="$CONFIG_DIR/neofetch/snowfox.txt"
-ascii_colors=(5 7)
-EOF
-
-CONFIG_DIR="$TARGET_HOME/.config"
 
 # Verzeichnisse erstellen
 mkdir -p "$CONFIG_DIR"
