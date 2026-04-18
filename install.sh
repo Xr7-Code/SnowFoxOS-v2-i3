@@ -163,9 +163,37 @@ fi
 # GPU-Check
 GPU_INFO=$(lspci | grep -iE 'vga|3d|display')
 if echo "$GPU_INFO" | grep -qi "nvidia"; then
-    info "NVIDIA GPU erkannt — Optimiere für Gaming & DLSS..."
-    apt-get install -y nvidia-driver nvidia-vulkan-icd nvidia-settings libvulkan1:i386 libvulkan1
-    success "NVIDIA Stack installiert"
+    info "NVIDIA GPU erkannt — Installiere aktuellen Treiber via CUDA-Repo..."
+
+    # clang + lld benoetigt da XanMod mit clang kompiliert wurde —
+    # ohne clang schlaegt der DKMS-Build des NVIDIA-Treibers fehl
+    apt-get install -y clang lld
+
+    # Offizielles NVIDIA CUDA-Repo einbinden
+    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub         | gpg --dearmor | tee /usr/share/keyrings/nvidia-cuda-keyring.gpg > /dev/null
+    echo "deb [signed-by=/usr/share/keyrings/nvidia-cuda-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /"         | tee /etc/apt/sources.list.d/nvidia-cuda.list
+
+    # APT-Pinning: NVIDIA-Pakete kommen aus dem CUDA-Repo,
+    # der Rest bleibt auf Debian Stable
+    cat > /etc/apt/preferences.d/nvidia-cuda << 'EOF'
+Package: cuda-drivers* nvidia-* libcuda* libnvidia-*
+Pin: origin "developer.download.nvidia.com"
+Pin-Priority: 900
+
+Package: *
+Pin: release o=Debian
+Pin-Priority: 500
+EOF
+
+    apt-get update -qq
+
+    # cuda-drivers-570 = stabiler Production Branch
+    # kompatibel mit XanMod + clang 19
+    # inkl. 32-bit Libs fuer Steam & Vulkan
+    apt-get install -y         cuda-drivers-570         libvulkan1 libvulkan1:i386         nvidia-vulkan-icd nvidia-vulkan-icd:i386
+
+    success "NVIDIA Stack installiert (Treiber 570 via CUDA-Repo)"
+
 elif echo "$GPU_INFO" | grep -qi "amd"; then
     info "AMD GPU erkannt — Nutze Mesa..."
     apt-get install -y firmware-amd-graphics mesa-vulkan-drivers mesa-va-drivers
