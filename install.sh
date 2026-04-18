@@ -91,23 +91,39 @@ if [[ "$INSTALL_KERNEL" =~ ^[jJ]$ ]]; then
         | tee /etc/apt/sources.list.d/xanmod-kernel.list
     apt-get update -qq
 
-    # DKMS (z.B. NVIDIA) kann beim Bauen für einen neuen Kernel fehlschlagen.
-    # Das ist kein fataler Fehler — der Kernel selbst wird trotzdem installiert.
+    # DKMS-Hook temporär deaktivieren, damit der NVIDIA-Build-Fehler den
+    # dpkg postinst nicht abbricht und das Kernel-Paket sauber konfiguriert wird.
+    # Der Hook wird danach sofort wiederhergestellt.
+    DKMS_HOOK=/etc/kernel/postinst.d/dkms
+    DKMS_HOOK_BAK=/etc/kernel/postinst.d/dkms.snowfox-disabled
+    if [[ -f "$DKMS_HOOK" ]]; then
+        mv "$DKMS_HOOK" "$DKMS_HOOK_BAK"
+        info "DKMS-Hook temporaer deaktiviert (wird nach Kernel-Install wiederhergestellt)"
+    fi
+
     set +e
     apt-get install -y linux-xanmod-x64v3
     XANMOD_EXIT=$?
     set -e
 
+    # DKMS-Hook sofort wiederherstellen
+    if [[ -f "$DKMS_HOOK_BAK" ]]; then
+        mv "$DKMS_HOOK_BAK" "$DKMS_HOOK"
+        info "DKMS-Hook wiederhergestellt"
+    fi
+
     if [[ $XANMOD_EXIT -eq 0 ]]; then
         success "Performance-Kernel bereit (aktiv nach Reboot)"
     else
-        # Kernel wurde installiert, aber DKMS-Module (z.B. NVIDIA) schlugen fehl.
-        # dpkg --configure versucht ausstehende Pakete zu finalisieren — ignoriere Fehler.
-        dpkg --configure -a 2>/dev/null || true
-        warn "XanMod installiert, aber DKMS-Module konnten nicht gebaut werden."
-        warn "Häufige Ursache: NVIDIA-Treiber ist nicht mit dem neuen Kernel kompatibel."
-        warn "Nach dem Reboot in den XanMod-Kernel: sudo apt-get install --reinstall nvidia-driver"
+        warn "XanMod-Kernel-Installation schlug fehl (Exit $XANMOD_EXIT)."
+        warn "Bitte manuell pruefen: apt-get install linux-xanmod-x64v3"
         warn "Installation wird fortgesetzt..."
+    fi
+
+    # Falls NVIDIA verbaut ist: nach dem Reboot in XanMod die Module neu bauen
+    if lspci | grep -qi nvidia; then
+        warn "NVIDIA erkannt: Nach dem ersten Reboot in den XanMod-Kernel bitte ausfuehren:"
+        warn "  sudo dkms autoinstall -k \$(uname -r)"
     fi
 fi
 
@@ -127,6 +143,16 @@ step "2/10 — Hardware-Analyse & Treiber"
 
 IS_LAPTOP=false
 [[ "$(cat /sys/class/dmi/id/chassis_type 2>/dev/null)" =~ ^(8|9|10|14)$ ]] && IS_LAPTOP=true
+
+# CPU Microcode
+CPU_INFO=$(grep -m1 "vendor_id" /proc/cpuinfo)
+if echo "$CPU_INFO" | grep -qi "AuthenticAMD"; then
+    apt-get install -y amd64-microcode
+    success "AMD CPU Microcode installiert"
+else
+    apt-get install -y intel-microcode
+    success "Intel CPU Microcode installiert"
+fi
 
 # GPU-Check
 GPU_INFO=$(lspci | grep -iE 'vga|3d|display')
