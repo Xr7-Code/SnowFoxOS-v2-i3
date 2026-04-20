@@ -47,7 +47,7 @@ exec --no-startup-id nm-applet
 exec --no-startup-id redshift
 
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork -c 000000
-exec --no-startup-id xautolock -time 5 -locker "~/.config/snowfox-lock.sh" -notify 10 -notifier "notify-send 'SnowFox' 'Bildschirm wird in 10 Sekunden gesperrt'"
+# exec --no-startup-id xautolock -time 5 -locker "~/.config/snowfox-lock.sh" -notify 10 -notifier "notify-send 'SnowFox' 'Bildschirm wird in 10 Sekunden gesperrt'"
 
 # ── Keyboard Shortcuts ──────────────────────────────────────
 bindsym $mod+Return exec $term
