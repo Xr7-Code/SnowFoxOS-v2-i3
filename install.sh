@@ -284,7 +284,10 @@ apt-get install -y \
     lxappearance \
     picom \
     xss-lock \
-    xserver-xorg-input-libinput
+    xserver-xorg-input-libinput \
+    clipit \
+    cups cups-bsd cups-client \
+    printer-driver-splix
 
 systemctl enable bluetooth
 
@@ -461,8 +464,26 @@ if ask_install "Steam"; then
         steam steam-devices \
         libvulkan1 libvulkan1:i386 \
         vulkan-tools libgl1-mesa-dri:i386 \
-        mesa-vulkan-drivers:i386 2>/dev/null || warn "Steam teilweise fehlgeschlagen"
-    success "Steam installiert"
+        mesa-vulkan-drivers:i386 \
+        gamemode 2>/dev/null || warn "Steam teilweise fehlgeschlagen"
+    systemctl enable gamemoded 2>/dev/null || true
+    success "Steam + GameMode installiert"
+
+    # Proton GE — bessere Kompatibilitaet und Performance als Standard-Proton
+    # Wird in ~/.steam/root/compatibilitytools.d/ installiert
+    info "Installiere Proton GE..."
+    PROTON_GE_URL=$(curl -s https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest \
+        | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
+    if [[ -n "$PROTON_GE_URL" ]]; then
+        curl -L "$PROTON_GE_URL" -o /tmp/proton-ge.tar.gz
+        mkdir -p "$TARGET_HOME/.steam/root/compatibilitytools.d"
+        tar -xzf /tmp/proton-ge.tar.gz -C "$TARGET_HOME/.steam/root/compatibilitytools.d/"
+        rm -f /tmp/proton-ge.tar.gz
+        chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.steam/root/compatibilitytools.d/"
+        success "Proton GE installiert"
+    else
+        warn "Proton GE konnte nicht heruntergeladen werden — manuell installieren"
+    fi
 fi
 
 # ============================================================
@@ -488,8 +509,8 @@ EOF
 # /tmp im RAM
 grep -q "tmpfs /tmp" /etc/fstab || echo "tmpfs /tmp tmpfs defaults,noatime,mode=1777 0 0" >> /etc/fstab
 
-# Unbenötigte Dienste deaktivieren
-for svc in avahi-daemon cups cups-browsed ModemManager; do
+# Unbenoetigte Dienste deaktivieren
+for svc in avahi-daemon cups-browsed ModemManager colord; do
     systemctl disable "$svc" 2>/dev/null || true
 done
 
@@ -641,6 +662,64 @@ fi
 if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
     echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
+
+# Standard-Anwendungen abfragen und setzen
+echo ""
+echo -e "${PURPLE}${BOLD}  Standard-Anwendungen festlegen:${RESET}"
+
+echo ""
+echo -e "  Dateimanager:"
+echo -e "  1) Thunar (Standard)"
+echo -e "  2) Keine Aenderung"
+read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-2]: "${RESET})" DEFAULT_FM
+[[ "$DEFAULT_FM" == "1" ]] && DEFAULT_FM_DESKTOP="thunar.desktop" || DEFAULT_FM_DESKTOP="thunar.desktop"
+
+echo ""
+echo -e "  Texteditor fuer Dateien:"
+echo -e "  1) Mousepad (Standard)"
+echo -e "  2) VSCodium"
+read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-2]: "${RESET})" DEFAULT_EDITOR
+case "$DEFAULT_EDITOR" in
+    2) DEFAULT_EDITOR_DESKTOP="codium.desktop" ;;
+    *) DEFAULT_EDITOR_DESKTOP="mousepad.desktop" ;;
+esac
+
+echo ""
+echo -e "  Standard-Browser:"
+echo -e "  1) Firefox-ESR"
+echo -e "  2) Chromium"
+echo -e "  3) Brave"
+read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-3]: "${RESET})" DEFAULT_BROWSER
+case "$DEFAULT_BROWSER" in
+    2) DEFAULT_BROWSER_DESKTOP="chromium.desktop" ;;
+    3) DEFAULT_BROWSER_DESKTOP="brave-browser.desktop" ;;
+    *) DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop" ;;
+esac
+
+# mimeapps.list mit korrekten Standard-Apps erstellen
+cat > "$TARGET_HOME/.config/mimeapps.list" << EOF
+[Default Applications]
+inode/directory=$DEFAULT_FM_DESKTOP
+text/plain=$DEFAULT_EDITOR_DESKTOP
+text/x-python=$DEFAULT_EDITOR_DESKTOP
+text/x-shellscript=$DEFAULT_EDITOR_DESKTOP
+application/x-shellscript=$DEFAULT_EDITOR_DESKTOP
+x-scheme-handler/http=$DEFAULT_BROWSER_DESKTOP
+x-scheme-handler/https=$DEFAULT_BROWSER_DESKTOP
+text/html=$DEFAULT_BROWSER_DESKTOP
+application/xhtml+xml=$DEFAULT_BROWSER_DESKTOP
+application/pdf=firefox-esr.desktop
+image/png=ristretto.desktop
+image/jpeg=ristretto.desktop
+image/gif=ristretto.desktop
+video/mp4=mpv.desktop
+video/x-matroska=mpv.desktop
+audio/mpeg=mpv.desktop
+application/zip=org.gnome.FileRoller.desktop
+application/x-tar=org.gnome.FileRoller.desktop
+EOF
+
+success "Standard-Anwendungen gesetzt (FM: $DEFAULT_FM_DESKTOP, Editor: $DEFAULT_EDITOR_DESKTOP, Browser: $DEFAULT_BROWSER_DESKTOP)"
 
 # Finale Berechtigungen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
