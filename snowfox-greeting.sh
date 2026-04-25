@@ -11,10 +11,11 @@ GRAY='\033[0;37m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# VERBESSERTER CHECK: Nur anzeigen, wenn wir in einem echten interaktiven Terminal sind
-# und nicht innerhalb eines anderen Scripts (SHLVL 1).
-[[ $- != *i* ]] && exit
-[[ "$SHLVL" -gt 1 ]] && exit 0
+# Nur in interaktiven Shells anzeigen, nicht in Scripts
+[[ $- != *i* ]] && exit 0
+# Nur einmal pro Session anzeigen
+[[ -n "$SNOWFOX_GREETED" ]] && exit 0
+export SNOWFOX_GREETED=1
 
 # Uhrzeit & Datum
 HOUR=$(date +%H)
