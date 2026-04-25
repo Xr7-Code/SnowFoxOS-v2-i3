@@ -13,7 +13,7 @@ RESET='\033[0m'
 
 # VERBESSERTER CHECK: Nur anzeigen, wenn wir in einem echten interaktiven Terminal sind
 # und nicht innerhalb eines anderen Scripts (SHLVL 1).
-[[ $- != *i* ]] && return
+[[ $- != *i* ]] && exit
 [[ "$SHLVL" -gt 1 ]] && exit 0
 
 # Uhrzeit & Datum
