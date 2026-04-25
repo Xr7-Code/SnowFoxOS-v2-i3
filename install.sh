@@ -660,7 +660,7 @@ fi
 
 # Greeting in .bashrc einbinden
 if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
-    echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
+    echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && source /usr/local/bin/snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
 # Standard-Anwendungen abfragen und setzen
