@@ -636,6 +636,14 @@ if [[ -d "$SCRIPT_DIR/wallpapers" ]]; then
     success "Wallpapers kopiert"
 fi
 
+# modprobe Configs installieren (AMD CRTC Freeze Fix + NVIDIA)
+if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
+    cp "$SCRIPT_DIR/configs/modprobe/amdgpu.conf" /etc/modprobe.d/amdgpu.conf 2>/dev/null || true
+    cp "$SCRIPT_DIR/configs/modprobe/nvidia.conf" /etc/modprobe.d/nvidia.conf 2>/dev/null || true
+    update-initramfs -u 2>/dev/null || true
+    success "modprobe Configs installiert"
+fi
+
 # Power-Menü aus Repo als System-Binary verfügbar machen
 if [[ -f "$SCRIPT_DIR/configs/powermenu.sh" ]]; then
     cp "$SCRIPT_DIR/configs/powermenu.sh" /usr/local/bin/snowfox-powermenu
@@ -660,7 +668,7 @@ fi
 
 # Greeting in .bashrc einbinden
 if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
-    echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && source /usr/local/bin/snowfox-greeting' >> "$TARGET_HOME/.bashrc"
+    echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
 # Standard-Anwendungen abfragen und setzen
