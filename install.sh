@@ -1,36 +1,24 @@
 #!/bin/bash
 # ============================================================
-#  SnowFoxOS v2.1 — Installer mit whiptail TUI
+#  SnowFoxOS v2.1 — Installer
 #  Basis: Debian 12 (Bookworm) minimal
-#  Desktop: i3 + Polybar + Rofi + Dunst + i3lock
 #  Ausführen: sudo bash install.sh
 # ============================================================
 
 set -e
 
-# ── Farben für Konsolenausgabe ───────────────────────────────
-PURPLE='\033[0;35m'
-ORANGE='\033[0;33m'
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-BOLD='\033[1m'
-RESET='\033[0m'
-
+# ── Farben ───────────────────────────────────────────────────
+GREEN='\033[0;32m'; RED='\033[0;31m'; PURPLE='\033[0;35m'; BOLD='\033[1m'; RESET='\033[0m'
 info()    { echo -e "${PURPLE}${BOLD}[SnowFox]${RESET} $1"; }
 success() { echo -e "${GREEN}${BOLD}[  OK  ]${RESET} $1"; }
-warn()    { echo -e "${ORANGE}${BOLD}[ WARN ]${RESET} $1"; }
+warn()    { echo -e "\033[0;33m${BOLD}[ WARN ]${RESET} $1"; }
 error()   { echo -e "${RED}${BOLD}[FEHLER]${RESET} $1"; exit 1; }
+run()     { "$@" >> "$LOG" 2>&1; }
 
-# ── Root-Check ───────────────────────────────────────────────
-if [[ $EUID -ne 0 ]]; then
-    error "Bitte mit sudo ausführen: sudo bash install.sh"
-fi
+[[ $EUID -ne 0 ]] && error "Bitte mit sudo ausführen: sudo bash install.sh"
 
 # ── whiptail sicherstellen ───────────────────────────────────
-if ! command -v whiptail &>/dev/null; then
-    info "Installiere whiptail..."
-    apt-get install -y whiptail -qq
-fi
+command -v whiptail &>/dev/null || apt-get install -y whiptail -qq
 
 export TERM=xterm-256color
 export NEWT_COLORS='
@@ -55,8 +43,7 @@ roottext=purple,black
 # ── Benutzer ermitteln ───────────────────────────────────────
 TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null || echo '')}"
 if [[ -z "$TARGET_USER" || "$TARGET_USER" == "root" ]]; then
-    TARGET_USER=$(whiptail \
-        --title "SnowFoxOS Installer" \
+    TARGET_USER=$(whiptail --title "SnowFoxOS Installer" \
         --inputbox "Für welchen Benutzer soll SnowFoxOS installiert werden?" \
         8 60 "" 3>&1 1>&2 2>&3) || exit 1
 fi
@@ -66,14 +53,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 LOG="/tmp/snowfox_install.log"
 > "$LOG"
-run() { "$@" >> "$LOG" 2>&1; }
 
 # ============================================================
-# SCREEN 0 — Willkommen
+# TUI — Alle Eingaben VOR der Installation
 # ============================================================
-whiptail \
-    --title "SnowFoxOS v2.1 Installer" \
-    --msgbox \
+
+# SCREEN 0 — Willkommen
+whiptail --title "SnowFoxOS v2.1 Installer" --msgbox \
 "
  ███████╗███╗  ██╗ ██████╗ ██╗    ██╗███████╗ ██████╗ ██╗  ██╗
  ██╔════╝████╗ ██║██╔═══██╗██║    ██║██╔════╝██╔═══██╗ ╚██╗██╔╝
@@ -90,25 +76,16 @@ whiptail \
   Benutzer: $TARGET_USER
 
   Drücke ENTER um fortzufahren." \
-    22 72
+22 72
 
-# ============================================================
 # SCREEN 1 — Lizenz
-# ============================================================
-whiptail \
-    --title "SnowFox Public License v1.1" \
-    --scrolltext \
-    --msgbox \
+whiptail --title "SnowFox Public License v1.1" --scrolltext --msgbox \
 "SnowFox Public License (SFL) v1.1
 Copyright (c) 2026 Alexander Valentin Ludwig (Xr7-Code)
-
-Diese Lizenz definiert die Bedingungen unter denen SnowFoxOS
-und seine Derivate genutzt, verändert und verteilt werden duerfen.
 
 ────────────────────────────────────────
 1. ERLAUBTE NUTZUNG
 ────────────────────────────────────────
-
 Du darfst:
 - Diese Software fuer persoenliche, bildungsbezogene oder
   kommerzielle Zwecke nutzen
@@ -120,31 +97,23 @@ Du darfst:
 ────────────────────────────────────────
 2. VERTEILUNGSBEDINGUNGEN
 ────────────────────────────────────────
-
 Bei der Weitergabe musst du:
 - Diese Lizenz vollstaendig beifuegen
 - Alle Urheberrechtshinweise beibehalten
 - Alle Aenderungen klar kennzeichnen
 - Ableitungen unter derselben Lizenz (SFL v1.1) verteilen
-- Sicherstellen dass Empfaenger dieselben Rechte erhalten
 
 ────────────────────────────────────────
 3. MARKEN- UND NAMENSNUTZUNG
 ────────────────────────────────────────
-
 - Der Name 'SnowFoxOS' darf nur fuer Distributionen verwendet
-  werden die dem urspruenglichen Projektziel treu bleiben,
-  einschliesslich des Fokus auf Benutzerkontrolle und Privacy.
+  werden die dem urspruenglichen Projektziel treu bleiben.
 - Abgeleitete Werke duerfen sich nicht als das originale
-  SnowFoxOS ausgeben wenn sie diese Grundsaetze wesentlich
-  veraendern.
-- Der Name darf nicht irrefuehrend zur Billigung durch den
-  Originalautor genutzt werden.
+  SnowFoxOS ausgeben.
 
 ────────────────────────────────────────
 4. PRIVACY UND NUTZERRESPEKT
 ────────────────────────────────────────
-
 - Keine unautorisierten Telemetrie- oder Tracking-Funktionen
 - Jede Datensammlung muss transparent und mit Zustimmung erfolgen
 - Die Software darf Nutzer nicht absichtlich schaedigen
@@ -152,58 +121,35 @@ Bei der Weitergabe musst du:
 ────────────────────────────────────────
 5. EINSCHRAENKUNGEN
 ────────────────────────────────────────
-
 Du darfst nicht:
-- Diese Lizenz bei der Weitergabe entfernen oder veraendern
+- Diese Lizenz entfernen oder veraendern
 - Die Software ohne Beibehaltung der Zuschreibung weitergeben
 - Den Ursprung der Software falsch darstellen
-- Exklusive Autorenschaft am Originalwerk beanspruchen
 
 ────────────────────────────────────────
 6. KEINE GEWAEHRLEISTUNG
 ────────────────────────────────────────
-
-Diese Software wird 'so wie sie ist' bereitgestellt, ohne
-jegliche ausdruckliche oder stillschweigende Gewaehrleistung.
+Diese Software wird 'so wie sie ist' bereitgestellt.
 Der Autor haftet nicht fuer Schaeden aus der Nutzung.
 
 ────────────────────────────────────────
-7. KUENDIGUNG
+7. ABSCHLUSSERKLARUNG
 ────────────────────────────────────────
-
-Jeder Verstoss fuehrt zum sofortigen Erloeschen der Rechte.
-
-────────────────────────────────────────
-8. ABSCHLUSSERKLARUNG
-────────────────────────────────────────
-
-Diese Software ist dazu bestimmt ihren Nutzern zu dienen,
-nicht sie auszunutzen. Nutzer behalten die Kontrolle ueber
-ihre Systeme, ihre Daten und ihre Computerumgebung.
-
 'Dein Computer gehoert dir.'
 -- Alexander Valentin Ludwig" \
-    36 72
+36 72
 
-if ! whiptail \
-    --title "Lizenz akzeptieren" \
-    --yesno \
+if ! whiptail --title "Lizenz akzeptieren" --yesno \
 "Hast du die SnowFox Public License v1.1 gelesen
 und akzeptierst du die Bedingungen?
 
 Ohne Zustimmung kann die Installation nicht
-fortgesetzt werden." \
-    12 60; then
-    clear
-    echo -e "${RED}${BOLD}Abgebrochen — Lizenz nicht akzeptiert.${RESET}"
-    exit 1
+fortgesetzt werden." 12 60; then
+    clear; echo -e "${RED}${BOLD}Abgebrochen — Lizenz nicht akzeptiert.${RESET}"; exit 1
 fi
 
-# ============================================================
 # SCREEN 2 — Optionale Pakete
-# ============================================================
-OPTIONAL_CHOICES=$(whiptail \
-    --title "Optionale Pakete" \
+OPTIONAL_CHOICES=$(whiptail --title "Optionale Pakete" \
     --checklist \
 "Waehle die Komponenten die installiert werden sollen.
 Leertaste = auswaehlen/abwaehlen  |  Tab = OK/Abbrechen" \
@@ -216,12 +162,8 @@ Leertaste = auswaehlen/abwaehlen  |  Tab = OK/Abbrechen" \
     "STEAM"      "Steam + GameMode + Proton GE"        OFF \
     3>&1 1>&2 2>&3) || { clear; echo "Abgebrochen."; exit 1; }
 
-# ============================================================
 # SCREEN 3 — Browser
-# ============================================================
-BROWSER_CHOICE=$(whiptail \
-    --title "Browser waehlen" \
-    --menu \
+BROWSER_CHOICE=$(whiptail --title "Browser waehlen" --menu \
 "Waehle deinen Standard-Browser:" \
     16 68 5 \
     "1" "Zen Browser   (Firefox-Basis, Privacy — empfohlen)" \
@@ -231,21 +173,15 @@ BROWSER_CHOICE=$(whiptail \
     "5" "Chromium      (leicht, schnell)" \
     3>&1 1>&2 2>&3) || { clear; echo "Abgebrochen."; exit 1; }
 
-# ============================================================
-# SCREEN 4 — Standard-Editor
-# ============================================================
-EDITOR_CHOICE=$(whiptail \
-    --title "Standard-Texteditor" \
-    --menu \
+# SCREEN 4 — Editor
+EDITOR_CHOICE=$(whiptail --title "Standard-Texteditor" --menu \
 "Welcher Editor soll als Standard gesetzt werden?" \
     12 68 2 \
     "1" "Mousepad  (leicht, GTK)" \
     "2" "VSCodium  (nur wenn oben gewaehlt)" \
     3>&1 1>&2 2>&3) || EDITOR_CHOICE="1"
 
-# ============================================================
 # SCREEN 5 — Zusammenfassung
-# ============================================================
 case "$BROWSER_CHOICE" in
     1) BROWSER_NAME="Zen Browser" ;;
     2) BROWSER_NAME="LibreWolf" ;;
@@ -262,9 +198,7 @@ for pkg in THUNAR VSCODE ONLYOFFICE VLC GIMP STEAM; do
 done
 [[ -z "$OPT_LIST" ]] && OPT_LIST="  (keine)\n"
 
-if ! whiptail \
-    --title "Zusammenfassung" \
-    --yesno \
+if ! whiptail --title "Zusammenfassung" --yesno \
 "Folgendes wird installiert:
 
   Benutzer : $TARGET_USER
@@ -276,25 +210,33 @@ $(echo -e "$OPT_LIST")
   Immer enthalten:
   + i3 + Polybar + Rofi + Dunst + Picom
   + XanMod LTS Kernel (x64v3)
-  + PipeWire Audio
-  + GPU-Treiber (automatisch erkannt)
-  + ufw Firewall + MAC-Rand. + DNS-over-TLS
+  + PipeWire Audio + GPU-Treiber
+  + ufw + MAC-Rand. + DNS-over-TLS
   + zram + earlyoom + tlp + snowfox CLI
 
 Installation jetzt starten?" \
-    28 68; then
-    clear
-    echo "Installation abgebrochen."
-    exit 0
+28 68; then
+    clear; echo "Abgebrochen."; exit 0
 fi
 
 # ============================================================
-# INSTALLATION — mit Fortschrittsbalken
+# INSTALLATION — läuft direkt, whiptail zeigt Schritte
 # ============================================================
-(
+
+show_progress() {
+    # show_progress "Titel" "Beschreibung"
+    clear
+    whiptail --title "SnowFoxOS wird installiert..." \
+        --infobox "  Schritt $STEP von $TOTAL_STEPS\n\n  $1\n\n  $2\n\n  Log: /tmp/snowfox_install.log" \
+        12 68
+}
+
+STEP=0
+TOTAL_STEPS=11
 
 # ── Schritt 1: System & Repos ────────────────────────────────
-echo "2"; echo "XXX"; echo "System vorbereiten & Repos einrichten..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] System & Repos" "Paketquellen einrichten & System aktualisieren..."
 
 DKMS_HOOKS=(/etc/kernel/postinst.d/dkms /etc/kernel/prerm.d/dkms /usr/lib/kernel/install.d/50-dkms.install)
 for hook in "${DKMS_HOOKS[@]}"; do [[ -f "$hook" ]] && mv "$hook" "${hook}.snowfox-bak"; done
@@ -319,26 +261,36 @@ run apt-get install -y \
     xdg-utils xdg-user-dirs rfkill imagemagick bc \
     xorg xinit x11-utils x11-xserver-utils xclip xdotool dbus-x11
 run sudo -u "$TARGET_USER" xdg-user-dirs-update
+success "System & Repos bereit"
 
 # ── Schritt 2: XanMod Kernel ─────────────────────────────────
-echo "12"; echo "XXX"; echo "XanMod LTS Kernel installieren..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] XanMod Kernel" "XanMod LTS Kernel installieren..."
 
 curl -fSL https://dl.xanmod.org/archive.key \
     | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg >> "$LOG" 2>&1
 echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
     | tee /etc/apt/sources.list.d/xanmod-kernel.list >> "$LOG"
 run apt-get update -qq
-set +e; DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3 >> "$LOG" 2>&1; set -e
+set +e
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3 >> "$LOG" 2>&1
+XANMOD_EXIT=$?
+set -e
+[[ $XANMOD_EXIT -ne 0 ]] && warn "XanMod fehlgeschlagen (Exit $XANMOD_EXIT) — Fortsetzung..."
 
 CURRENT_KERNEL=$(uname -r)
-for pkg in $(dpkg --list | grep "linux-image-[0-9]" | awk '{print $2}' | grep -v "$CURRENT_KERNEL" | grep -v "xanmod"); do
+set +e
+for pkg in $(dpkg --list 2>/dev/null | grep "linux-image-[0-9]" | awk '{print $2}' | grep -v "$CURRENT_KERNEL" | grep -v "xanmod"); do
     run apt-get purge -y "$pkg"
 done
+set -e
 run apt-get autoremove -y
 run update-grub
+success "XanMod Kernel installiert"
 
-# ── Schritt 3: GPU & Hardware ────────────────────────────────
-echo "22"; echo "XXX"; echo "Hardware erkennen & Treiber installieren..."; echo "XXX"
+# ── Schritt 3: Hardware & GPU ────────────────────────────────
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Hardware & GPU" "GPU erkennen und Treiber installieren..."
 
 IS_LAPTOP=false
 [[ "$(cat /sys/class/dmi/id/chassis_type 2>/dev/null)" =~ ^(8|9|10|14)$ ]] && IS_LAPTOP=true
@@ -354,10 +306,14 @@ echo "$GPU_INFO" | grep -qi "amd"    && HAS_AMD=true
 
 if $HAS_NVIDIA; then
     run apt-get install -y clang-19 lld-19
-    for alt in clang clang++ lld ld.lld; do
-        binary="${alt/ld.lld/lld-19}"; binary="${binary/clang++/clang++-19}"; binary="${binary/clang/clang-19}"
-        update-alternatives --install /usr/bin/$alt $alt /usr/bin/$binary 100 >> "$LOG" 2>&1 || true
-    done
+    update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-19  100 >> "$LOG" 2>&1 || true
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100 >> "$LOG" 2>&1 || true
+    update-alternatives --install /usr/bin/lld     lld     /usr/bin/lld-19    100 >> "$LOG" 2>&1 || true
+    update-alternatives --install /usr/bin/ld.lld  ld.lld  /usr/bin/lld-19   100 >> "$LOG" 2>&1 || true
+    update-alternatives --set clang   /usr/bin/clang-19  >> "$LOG" 2>&1 || true
+    update-alternatives --set lld     /usr/bin/lld-19    >> "$LOG" 2>&1 || true
+    update-alternatives --set ld.lld  /usr/bin/lld-19    >> "$LOG" 2>&1 || true
+
     curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub \
         | gpg --dearmor | tee /usr/share/keyrings/nvidia-cuda-keyring.gpg > /dev/null
     echo "deb [signed-by=/usr/share/keyrings/nvidia-cuda-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /" \
@@ -373,20 +329,30 @@ EOF
     run apt-get update -qq
     set +e; run apt-get purge -y nvidia-driver nvidia-kernel-dkms; set -e
     run apt-get install -y cuda-drivers-580 libvulkan1 libvulkan1:i386 nvidia-vulkan-icd nvidia-vulkan-icd:i386
-    $HAS_AMD && { set +e; pip3 install envycontrol --break-system-packages >> "$LOG" 2>&1; set -e; }
+
+    if $HAS_AMD; then
+        set +e; pip3 install envycontrol --break-system-packages >> "$LOG" 2>&1; set -e
+    fi
     XANMOD_KERNEL=$(ls /lib/modules | grep xanmod | sort -V | tail -1)
     NVIDIA_VER=$(ls /var/lib/dkms/nvidia/ 2>/dev/null | sort -V | tail -1)
-    [[ -n "$XANMOD_KERNEL" && -n "$NVIDIA_VER" ]] && { set +e; dkms install nvidia/"$NVIDIA_VER" -k "$XANMOD_KERNEL" >> "$LOG" 2>&1; set -e; }
+    [[ -n "$XANMOD_KERNEL" && -n "$NVIDIA_VER" ]] && {
+        set +e; dkms install nvidia/"$NVIDIA_VER" -k "$XANMOD_KERNEL" >> "$LOG" 2>&1; set -e
+    }
 elif $HAS_AMD; then
     run apt-get install -y firmware-amd-graphics mesa-vulkan-drivers mesa-va-drivers
 else
     run apt-get install -y intel-media-va-driver-non-free i965-va-driver
 fi
 
-$IS_LAPTOP && { run apt-get install -y tlp tlp-rdw thermald xserver-xorg-input-libinput; run systemctl enable tlp thermald; }
+if $IS_LAPTOP; then
+    run apt-get install -y tlp tlp-rdw thermald xserver-xorg-input-libinput
+    run systemctl enable tlp thermald
+fi
+success "GPU-Treiber installiert"
 
 # ── Schritt 4: i3 Desktop ────────────────────────────────────
-echo "35"; echo "XXX"; echo "i3 Desktop installieren..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] i3 Desktop" "i3, Polybar, Rofi, Dunst, Picom installieren..."
 
 run apt-get install -y \
     i3 i3status i3lock polybar rofi dunst libnotify-bin feh redshift \
@@ -398,29 +364,7 @@ run apt-get install -y \
 
 run systemctl enable bluetooth
 
-cat > "$TARGET_HOME/.config/picom.conf" << 'EOF'
-backend = "xrender";
-vsync = false;
-shadow = false;
-fading = false;
-corner-radius = 8;
-rounded-corners-exclude = [
-    "class_g = 'Polybar'",
-    "window_type = 'dock'",
-    "window_type = 'desktop'"
-];
-opacity-rule = [
-    "95:class_g = 'kitty' && !focused",
-    "100:class_g = 'kitty' && focused"
-];
-wintypes: {
-    dock          = { shadow = false; };
-    popup_menu    = { shadow = false; opacity = 1.0; };
-    dropdown_menu = { shadow = false; opacity = 1.0; };
-    tooltip       = { shadow = false; opacity = 1.0; };
-};
-EOF
-
+# Touchpad
 mkdir -p /etc/X11/xorg.conf.d
 if [[ -f "$SCRIPT_DIR/configs/xorg/30-touchpad.conf" ]]; then
     cp "$SCRIPT_DIR/configs/xorg/30-touchpad.conf" /etc/X11/xorg.conf.d/30-touchpad.conf
@@ -437,11 +381,10 @@ EndSection
 EOF
 fi
 
+# i3 von TTY1 starten
 BASH_PROFILE="$TARGET_HOME/.bash_profile"
 grep -q "startx" "$BASH_PROFILE" 2>/dev/null || {
-    echo '' >> "$BASH_PROFILE"
-    echo '# SnowFoxOS — i3 automatisch starten' >> "$BASH_PROFILE"
-    echo '[ "$(tty)" = "/dev/tty1" ] && exec startx' >> "$BASH_PROFILE"
+    printf '\n# SnowFoxOS — i3 automatisch starten\n[ "$(tty)" = "/dev/tty1" ] && exec startx\n' >> "$BASH_PROFILE"
 }
 
 cat > "$TARGET_HOME/.xinitrc" << 'EOF'
@@ -453,21 +396,27 @@ EOF
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.xinitrc"
 chmod +x "$TARGET_HOME/.xinitrc"
 
+success "i3 Desktop installiert"
+
 # ── Schritt 5: Audio ─────────────────────────────────────────
-echo "45"; echo "XXX"; echo "PipeWire Audio installieren..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Audio" "PipeWire installieren..."
 
 run apt-get install -y pipewire pipewire-pulse pipewire-alsa wireplumber pavucontrol pulseaudio-utils
 set +e; run apt-get remove --purge -y pulseaudio; set -e
 sudo -u "$TARGET_USER" systemctl --user enable pipewire pipewire-pulse wireplumber >> "$LOG" 2>&1 || true
+success "PipeWire installiert"
 
 # ── Schritt 6: Terminal & Apps ───────────────────────────────
-echo "52"; echo "XXX"; echo "Terminal & Apps installieren..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Apps" "Terminal & optionale Apps installieren..."
 
 run apt-get install -y kitty mc mousepad ristretto file-roller mpv ffmpeg
 
-echo "$OPTIONAL_CHOICES" | grep -q "THUNAR"     && run apt-get install -y thunar thunar-archive-plugin thunar-volman gvfs gvfs-backends
-echo "$OPTIONAL_CHOICES" | grep -q "VLC"        && run apt-get install -y vlc
-echo "$OPTIONAL_CHOICES" | grep -q "GIMP"       && run apt-get install -y gimp
+echo "$OPTIONAL_CHOICES" | grep -q "THUNAR" && \
+    run apt-get install -y thunar thunar-archive-plugin thunar-volman gvfs gvfs-backends
+echo "$OPTIONAL_CHOICES" | grep -q "VLC"    && run apt-get install -y vlc
+echo "$OPTIONAL_CHOICES" | grep -q "GIMP"   && run apt-get install -y gimp
 
 if echo "$OPTIONAL_CHOICES" | grep -q "VSCODE"; then
     set +e
@@ -495,9 +444,13 @@ fi
 curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
     -o /usr/local/bin/yt-dlp >> "$LOG" 2>&1 && chmod +x /usr/local/bin/yt-dlp
 
-# ── Schritt 7: Browser ───────────────────────────────────────
-echo "62"; echo "XXX"; echo "Browser installieren..."; echo "XXX"
+success "Apps installiert"
 
+# ── Schritt 7: Browser ───────────────────────────────────────
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Browser" "Browser installieren..."
+
+DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop"
 case "$BROWSER_CHOICE" in
     1)
         set +e
@@ -521,7 +474,6 @@ EOF
             DEFAULT_BROWSER_DESKTOP="zen-browser.desktop"
         else
             run apt-get install -y firefox-esr
-            DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop"
         fi
         set -e ;;
     2)
@@ -530,8 +482,7 @@ EOF
             | gpg --dearmor | tee /usr/share/keyrings/librewolf.gpg > /dev/null
         echo "deb [signed-by=/usr/share/keyrings/librewolf.gpg arch=amd64] https://deb.librewolf.net bookworm main" \
             | tee /etc/apt/sources.list.d/librewolf.list >> "$LOG"
-        run apt-get update -qq
-        run apt-get install -y librewolf
+        run apt-get update -qq && run apt-get install -y librewolf
         DEFAULT_BROWSER_DESKTOP="librewolf.desktop"
         set -e ;;
     3)
@@ -539,8 +490,7 @@ EOF
             | tee /usr/share/keyrings/brave-browser-archive-keyring.gpg > /dev/null
         echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
             | tee /etc/apt/sources.list.d/brave-browser.list >> "$LOG"
-        run apt-get update -qq
-        run apt-get install -y brave-browser >> "$LOG" 2>&1
+        run apt-get update -qq && run apt-get install -y brave-browser >> "$LOG" 2>&1
         DEFAULT_BROWSER_DESKTOP="brave-browser.desktop" ;;
     4)
         run apt-get install -y firefox-esr
@@ -548,12 +498,12 @@ EOF
     5)
         run apt-get install -y chromium
         DEFAULT_BROWSER_DESKTOP="chromium.desktop" ;;
-    *)
-        DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop" ;;
 esac
+success "Browser installiert"
 
 # ── Schritt 8: Steam & Gaming ────────────────────────────────
-echo "70"; echo "XXX"; echo "Gaming-Komponenten installieren..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Gaming" "Steam & GameMode installieren..."
 
 if echo "$OPTIONAL_CHOICES" | grep -q "STEAM"; then
     run apt-get install -y steam steam-devices libvulkan1 libvulkan1:i386 \
@@ -568,12 +518,19 @@ if echo "$OPTIONAL_CHOICES" | grep -q "STEAM"; then
         rm -f /tmp/proton-ge.tar.gz
         chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.steam/root/compatibilitytools.d/"
     fi
+    success "Steam & GameMode installiert"
+else
+    success "Steam übersprungen"
 fi
 
 # ── Schritt 9: Performance & Sicherheit ─────────────────────
-echo "80"; echo "XXX"; echo "Performance & Sicherheit einrichten..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Performance & Sicherheit" "Firewall, zram, DNS-over-TLS einrichten..."
 
-run apt-get install -y zram-tools tlp tlp-rdw earlyoom ufw
+run apt-get install -y zram-tools earlyoom ufw
+
+# tlp nur falls nicht schon installiert (Laptop-Schritt)
+command -v tlp &>/dev/null || run apt-get install -y tlp tlp-rdw
 
 cat > /etc/default/zramswap << 'EOF'
 ALGO=lz4
@@ -591,7 +548,8 @@ net.ipv6.conf.all.use_tempaddr=2
 net.ipv6.conf.default.use_tempaddr=2
 EOF
 
-grep -q "tmpfs /tmp" /etc/fstab || echo "tmpfs /tmp tmpfs defaults,noatime,mode=1777 0 0" >> /etc/fstab
+grep -q "tmpfs /tmp" /etc/fstab || \
+    echo "tmpfs /tmp tmpfs defaults,noatime,mode=1777 0 0" >> /etc/fstab
 
 ufw default deny incoming  >> "$LOG" 2>&1
 ufw default allow outgoing >> "$LOG" 2>&1
@@ -621,9 +579,11 @@ for svc in avahi-daemon cups-browsed ModemManager colord; do
     systemctl disable "$svc" >> "$LOG" 2>&1 || true
 done
 sed -i 's/#HandlePowerKey=.*/HandlePowerKey=ignore/' /etc/systemd/logind.conf
+success "Performance & Sicherheit eingerichtet"
 
 # ── Schritt 10: Plymouth & Branding ─────────────────────────
-echo "88"; echo "XXX"; echo "Plymouth & Branding einrichten..."; echo "XXX"
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Branding" "Plymouth Boot-Screen & OS-Identität einrichten..."
 
 run apt-get install -y plymouth plymouth-themes
 PLYMOUTH_DIR="/usr/share/plymouth/themes/snowfox"
@@ -654,12 +614,6 @@ convert -size 1920x1080 xc:#0f0f0f "$PLYMOUTH_DIR/background.png" >> "$LOG" 2>&1
 plymouth-set-default-theme snowfox >> "$LOG" 2>&1 || true
 update-initramfs -u >> "$LOG" 2>&1 || true
 
-# ── Schritt 11: Konfiguration & Finishing ───────────────────
-echo "94"; echo "XXX"; echo "Konfiguration & Finishing..."; echo "XXX"
-
-CONFIG_DIR="$TARGET_HOME/.config"
-mkdir -p "$CONFIG_DIR/neofetch" "$TARGET_HOME/Pictures/wallpapers"
-
 cat > /etc/os-release << 'EOF'
 PRETTY_NAME="SnowFoxOS 2.1"
 NAME="SnowFoxOS"
@@ -669,7 +623,40 @@ ANSI_COLOR="0;35"
 EOF
 echo "snowfox"       > /etc/hostname
 echo "SnowFoxOS 2.1" > /etc/issue
+success "Branding eingerichtet"
 
+# ── Schritt 11: Konfiguration & Finishing ───────────────────
+STEP=$((STEP+1))
+show_progress "[$STEP/$TOTAL_STEPS] Konfiguration" "Configs kopieren & System finalisieren..."
+
+CONFIG_DIR="$TARGET_HOME/.config"
+mkdir -p "$CONFIG_DIR/neofetch" "$TARGET_HOME/Pictures/wallpapers"
+
+# Picom Config (minimal)
+cat > "$CONFIG_DIR/picom.conf" << 'EOF'
+backend = "xrender";
+vsync = false;
+shadow = false;
+fading = false;
+corner-radius = 8;
+rounded-corners-exclude = [
+    "class_g = 'Polybar'",
+    "window_type = 'dock'",
+    "window_type = 'desktop'"
+];
+opacity-rule = [
+    "95:class_g = 'kitty' && !focused",
+    "100:class_g = 'kitty' && focused"
+];
+wintypes: {
+    dock          = { shadow = false; };
+    popup_menu    = { shadow = false; opacity = 1.0; };
+    dropdown_menu = { shadow = false; opacity = 1.0; };
+    tooltip       = { shadow = false; opacity = 1.0; };
+};
+EOF
+
+# Neofetch
 cat > "$CONFIG_DIR/neofetch/config.conf" << NEOF
 print_info() {
     info title; info underline
@@ -701,27 +688,41 @@ cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
               ----------
 ASCIIEOF
 
-[[ -f "$CONFIG_DIR/xsettingsd" ]] && rm -f "$CONFIG_DIR/xsettingsd"
-[[ -d "$SCRIPT_DIR/configs"    ]] && cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
-[[ -d "$SCRIPT_DIR/wallpapers" ]] && cp -r "$SCRIPT_DIR/wallpapers/"* "$TARGET_HOME/Pictures/wallpapers/"
+# Repo-Configs kopieren — WICHTIG: überschreibt nichts was oben schon gesetzt wurde
+if [[ -d "$SCRIPT_DIR/configs" ]]; then
+    # Picom separat behandelt, nicht überschreiben
+    for item in "$SCRIPT_DIR/configs/"*; do
+        name=$(basename "$item")
+        [[ "$name" == "picom.conf" ]] && continue
+        cp -r "$item" "$CONFIG_DIR/$name"
+    done
+    success "Configs aus Repo kopiert"
+else
+    warn "configs/-Verzeichnis nicht gefunden"
+fi
 
+[[ -d "$SCRIPT_DIR/wallpapers" ]] && \
+    cp -r "$SCRIPT_DIR/wallpapers/"* "$TARGET_HOME/Pictures/wallpapers/"
+
+# modprobe
 if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
-    cp "$SCRIPT_DIR/configs/modprobe/amdgpu.conf" /etc/modprobe.d/amdgpu.conf >> "$LOG" 2>&1 || true
-    cp "$SCRIPT_DIR/configs/modprobe/nvidia.conf"  /etc/modprobe.d/nvidia.conf  >> "$LOG" 2>&1 || true
+    cp "$SCRIPT_DIR/configs/modprobe/amdgpu.conf" /etc/modprobe.d/ >> "$LOG" 2>&1 || true
+    cp "$SCRIPT_DIR/configs/modprobe/nvidia.conf"  /etc/modprobe.d/ >> "$LOG" 2>&1 || true
     update-initramfs -u >> "$LOG" 2>&1 || true
 fi
 
+# MIME-Typen
 [[ "$EDITOR_CHOICE" == "2" ]] && DEFAULT_EDITOR_DESKTOP="codium.desktop" || DEFAULT_EDITOR_DESKTOP="mousepad.desktop"
-cat > "$TARGET_HOME/.config/mimeapps.list" << MEOF
+cat > "$CONFIG_DIR/mimeapps.list" << MEOF
 [Default Applications]
 inode/directory=thunar.desktop
 text/plain=$DEFAULT_EDITOR_DESKTOP
 text/x-python=$DEFAULT_EDITOR_DESKTOP
 text/x-shellscript=$DEFAULT_EDITOR_DESKTOP
-x-scheme-handler/http=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
-x-scheme-handler/https=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
-text/html=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
-application/pdf=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
+x-scheme-handler/http=$DEFAULT_BROWSER_DESKTOP
+x-scheme-handler/https=$DEFAULT_BROWSER_DESKTOP
+text/html=$DEFAULT_BROWSER_DESKTOP
+application/pdf=$DEFAULT_BROWSER_DESKTOP
 image/png=ristretto.desktop
 image/jpeg=ristretto.desktop
 video/mp4=mpv.desktop
@@ -730,39 +731,38 @@ application/zip=org.gnome.FileRoller.desktop
 application/x-tar=org.gnome.FileRoller.desktop
 MEOF
 
-for f in snowfox snowfox-greeting.sh; do
-    [[ -f "$SCRIPT_DIR/$f" ]] && cp "$SCRIPT_DIR/$f" "/usr/local/bin/${f%.sh}" && chmod +x "/usr/local/bin/${f%.sh}"
-done
+# snowfox CLI
+[[ -f "$SCRIPT_DIR/snowfox" ]] && \
+    cp "$SCRIPT_DIR/snowfox" /usr/local/bin/snowfox && chmod +x /usr/local/bin/snowfox
+[[ -f "$SCRIPT_DIR/snowfox-greeting.sh" ]] && \
+    cp "$SCRIPT_DIR/snowfox-greeting.sh" /usr/local/bin/snowfox-greeting && chmod +x /usr/local/bin/snowfox-greeting
 [[ -f "$SCRIPT_DIR/configs/powermenu.sh" ]] && \
-    cp "$SCRIPT_DIR/configs/powermenu.sh" /usr/local/bin/snowfox-powermenu && \
-    chmod +x /usr/local/bin/snowfox-powermenu
+    cp "$SCRIPT_DIR/configs/powermenu.sh" /usr/local/bin/snowfox-powermenu && chmod +x /usr/local/bin/snowfox-powermenu
 
 grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null || \
-    echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
+    printf '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting\n' >> "$TARGET_HOME/.bashrc"
 
+# Fritz USB
+set +e
 run apt-get install -y firmware-misc-nonfree linux-headers-$(uname -r)
-lsusb 2>/dev/null | grep -qi "fritz\|0x0bda\|2357" && modprobe mt76x2u >> "$LOG" 2>&1 || true
+lsusb 2>/dev/null | grep -qi "fritz\|0x0bda\|2357" && modprobe mt76x2u >> "$LOG" 2>&1
+set -e
 
+# Berechtigungen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
 
+# DKMS-Hooks wiederherstellen
 for hook in "${DKMS_HOOKS[@]}"; do
     [[ -f "${hook}.snowfox-bak" ]] && mv "${hook}.snowfox-bak" "$hook"
 done
 
-echo "100"; echo "XXX"; echo "Fertig!"; echo "XXX"
-
-) | whiptail \
-    --title "SnowFoxOS wird installiert..." \
-    --gauge "Bitte warten — dies kann 20-60 Minuten dauern..." \
-    8 68 0
+success "Konfiguration abgeschlossen"
 
 # ============================================================
-# FERTIG-SCREEN
+# FERTIG
 # ============================================================
-whiptail \
-    --title "Installation abgeschlossen!" \
-    --msgbox \
-"  SnowFoxOS v2.1 wurde erfolgreich installiert!
+whiptail --title "Installation abgeschlossen!" --msgbox \
+"  SnowFoxOS v2.1 erfolgreich installiert!
 
   Was wurde eingerichtet:
   + i3 + Polybar + Rofi + Picom + Dunst
@@ -774,11 +774,10 @@ whiptail \
   + zram + earlyoom + tlp
   + snowfox CLI
 
-  Das Installations-Log findest du unter:
-  /tmp/snowfox_install.log
+  Installations-Log: /tmp/snowfox_install.log
 
-  Druecke ENTER — das System wird neu gestartet." \
-    22 60
+  Druecke ENTER — das System startet neu." \
+22 60
 
 clear
 echo -e "${GREEN}${BOLD}SnowFoxOS installiert. Starte neu...${RESET}"
