@@ -51,10 +51,6 @@ sleep 1
 step "1/10 — System aktualisieren"
 
 # DKMS-Hooks global deaktivieren fuer den gesamten Installer-Lauf.
-# Grund: apt-get upgrade kann halbinstallierte Kernel-Pakete aus einem
-# vorherigen fehlgeschlagenen Versuch konfigurieren wollen -- dabei wuerde
-# DKMS sofort feuern und den Installer abbrechen, noch bevor XanMod-Code laeuft.
-# Die Hooks werden am Ende des Installers wiederhergestellt.
 DKMS_HOOKS=(
     /etc/kernel/postinst.d/dkms
     /etc/kernel/prerm.d/dkms
@@ -76,7 +72,6 @@ EOF
 
 dpkg --add-architecture i386
 apt-get update -qq
-# Halbinstallierte Pakete aus vorherigen Versuchen zuerst bereinigen
 dpkg --configure -a 2>/dev/null || true
 apt-get -f install -y 2>/dev/null || true
 apt-get upgrade -y
@@ -104,8 +99,7 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
-# XanMod LTS Kernel — immer installiert, kein optionaler Skip
-# XanMod LTS 6.12/6.18 = stabil, NVIDIA-kompatibel, alle XanMod-Optimierungen (BBR3, futex2, x64v3)
+# XanMod LTS Kernel
 info "Installiere XanMod LTS Kernel..."
 curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
 echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
@@ -123,7 +117,7 @@ else
     warn "XanMod LTS Installation schlug fehl (Exit $XANMOD_EXIT) — Installation wird fortgesetzt..."
 fi
 
-# Alte Debian-Kernel entfernen — SnowFoxOS nutzt nur XanMod
+# Alte Debian-Kernel entfernen
 info "Entferne alte Debian-Kernel..."
 set +e
 CURRENT_KERNEL=$(uname -r)
@@ -135,7 +129,7 @@ update-grub 2>/dev/null || true
 set -e
 success "Alte Kernel entfernt"
 
-# Fritz USB AC 860 Treiber (mt76x2u)
+# Fritz USB AC 860 Treiber
 info "Prüfe Fritz USB AC 860 Treiber..."
 apt-get install -y firmware-misc-nonfree linux-headers-$(uname -r) 2>/dev/null || true
 if lsusb 2>/dev/null | grep -qi "fritz\|0x0bda\|2357"; then
@@ -164,16 +158,15 @@ fi
 
 # GPU-Check
 GPU_INFO=$(lspci | grep -iE 'vga|3d|display')
-if echo "$GPU_INFO" | grep -qi "nvidia"; then
+HAS_NVIDIA=false
+HAS_AMD=false
+echo "$GPU_INFO" | grep -qi "nvidia" && HAS_NVIDIA=true
+echo "$GPU_INFO" | grep -qi "amd"    && HAS_AMD=true
+
+if $HAS_NVIDIA; then
     info "NVIDIA GPU erkannt — Installiere aktuellen Treiber via CUDA-Repo..."
 
-    # clang-19 + lld-19 benoetigt:
-    # XanMod LTS wird mit clang kompiliert — DKMS muss exakt dieselbe
-    # LLVM-Version verwenden sonst schlaegt der Linker-Schritt fehl
-    # (Opaque Pointer Mismatch zwischen LLVM 14 und LLVM 19)
     apt-get install -y clang-19 lld-19
-
-    # clang-19 als Standard setzen
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-19 100
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100
     update-alternatives --install /usr/bin/lld lld /usr/bin/lld-19 100
@@ -182,14 +175,11 @@ if echo "$GPU_INFO" | grep -qi "nvidia"; then
     update-alternatives --set lld /usr/bin/lld-19
     update-alternatives --set ld.lld /usr/bin/lld-19
 
-    # Offizielles NVIDIA CUDA-Repo einbinden
     curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub \
         | gpg --dearmor | tee /usr/share/keyrings/nvidia-cuda-keyring.gpg > /dev/null
     echo "deb [signed-by=/usr/share/keyrings/nvidia-cuda-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /" \
         | tee /etc/apt/sources.list.d/nvidia-cuda.list
 
-    # APT-Pinning: NVIDIA-Pakete kommen aus dem CUDA-Repo,
-    # der Rest bleibt auf Debian Stable
     cat > /etc/apt/preferences.d/nvidia-cuda << 'EOF'
 Package: cuda-drivers* nvidia-* libcuda* libnvidia-*
 Pin: origin "developer.download.nvidia.com"
@@ -201,20 +191,22 @@ Pin-Priority: 500
 EOF
 
     apt-get update -qq
-
-    # Alten Debian NVIDIA-Treiber entfernen falls vorhanden
     apt-get purge -y nvidia-driver nvidia-kernel-dkms 2>/dev/null || true
-
-    # cuda-drivers-580 = aktueller stabiler Branch
-    # kompatibel mit XanMod LTS + clang-19/lld-19
-    # inkl. 32-bit Libs fuer Steam & Vulkan
     apt-get install -y \
         cuda-drivers-580 \
         libvulkan1 libvulkan1:i386 \
         nvidia-vulkan-icd nvidia-vulkan-icd:i386
 
-    # DKMS manuell fuer den installierten XanMod-Kernel bauen
-    # (DKMS-Hooks sind waehrend des Installers deaktiviert)
+    # Hybrid: envycontrol fuer AMD+NVIDIA
+    if $HAS_AMD; then
+        info "Hybrid-GPU erkannt (AMD+NVIDIA) — Installiere envycontrol..."
+        set +e
+        pip3 install envycontrol --break-system-packages 2>/dev/null || \
+            pip install envycontrol --break-system-packages 2>/dev/null || true
+        set -e
+        success "envycontrol installiert (AMD+NVIDIA Hybrid)"
+    fi
+
     XANMOD_KERNEL=$(ls /lib/modules | grep xanmod | sort -V | tail -1)
     if [[ -n "$XANMOD_KERNEL" ]]; then
         NVIDIA_VER=$(ls /var/lib/dkms/nvidia/ 2>/dev/null | sort -V | tail -1)
@@ -226,10 +218,9 @@ EOF
             success "NVIDIA DKMS-Module gebaut"
         fi
     fi
+    success "NVIDIA Stack installiert"
 
-    success "NVIDIA Stack installiert (CUDA-Repo, clang-19)"
-
-elif echo "$GPU_INFO" | grep -qi "amd"; then
+elif $HAS_AMD; then
     info "AMD GPU erkannt — Nutze Mesa..."
     apt-get install -y firmware-amd-graphics mesa-vulkan-drivers mesa-va-drivers
     success "AMD Stack installiert"
@@ -239,7 +230,7 @@ else
     success "Intel Stack installiert"
 fi
 
-# Laptop-Spezifische Optimierung
+# Laptop-spezifische Optimierung
 if [ "$IS_LAPTOP" = true ]; then
     info "Laptop erkannt: Installiere Akku- & Touchpad-Tools..."
     apt-get install -y tlp tlp-rdw thermald xserver-xorg-input-libinput
@@ -265,12 +256,10 @@ apt-get install -y \
     feh \
     redshift \
     scrot \
-    xautolock \
     brightnessctl \
     playerctl \
     network-manager \
     network-manager-gnome \
-    nm-tray \
     bluez \
     blueman \
     fonts-inter \
@@ -288,6 +277,8 @@ apt-get install -y \
     clipit \
     cups cups-bsd cups-client \
     printer-driver-splix
+
+# xautolock wird NICHT mehr installiert — xss-lock reicht (kein Timeout erwünscht)
 
 systemctl enable bluetooth
 
@@ -307,8 +298,33 @@ Section "InputClass"
     Option "NaturalScrolling" "true"
 EndSection
 EOF
-    info "Standard-Touchpad-Config (Tapping/Natural Scroll) erstellt"
+    info "Standard-Touchpad-Config erstellt"
 fi
+
+# Minimale Picom-Config (nur Ecken + Transparenz, kein Schatten/Fading)
+cat > "$TARGET_HOME/.config/picom.conf" << 'EOF'
+# SnowFoxOS — Picom minimal (abgerundete Ecken + Transparenz)
+backend = "xrender";
+vsync = false;
+shadow = false;
+fading = false;
+corner-radius = 8;
+rounded-corners-exclude = [
+    "class_g = 'Polybar'",
+    "window_type = 'dock'",
+    "window_type = 'desktop'"
+];
+opacity-rule = [
+    "95:class_g = 'kitty' && !focused",
+    "100:class_g = 'kitty' && focused"
+];
+wintypes: {
+    dock        = { shadow = false; };
+    popup_menu  = { shadow = false; opacity = 1.0; };
+    dropdown_menu = { shadow = false; opacity = 1.0; };
+    tooltip     = { shadow = false; opacity = 1.0; };
+};
+EOF
 
 # i3 startet automatisch von TTY1
 BASH_PROFILE="$TARGET_HOME/.bash_profile"
@@ -380,11 +396,6 @@ case "$FM_CHOICE" in
 esac
 
 # Optionale Apps
-if ask_install "Firefox-ESR (Stabil)"; then
-    apt-get install -y firefox-esr
-    success "Firefox-ESR installiert"
-fi
-
 if ask_install "VLC Media Player"; then
     apt-get install -y vlc
     success "VLC installiert"
@@ -433,25 +444,89 @@ step "6/10 — Browser"
 
 echo ""
 echo -e "${PURPLE}${BOLD}  Browser Wahl:${RESET}"
-echo -e "  1) Chromium  (empfohlen)"
-echo -e "  2) Falkon    (leicht)"
-echo -e "  3) Brave     (Privacy)"
-echo -e "  4) Keinen"
+echo -e "  1) Zen Browser  (Firefox-Basis, Privacy, empfohlen)"
+echo -e "  2) LibreWolf    (gehärteter Firefox, maximale Privacy)"
+echo -e "  3) Brave        (Chromium-Basis, Privacy)"
+echo -e "  4) Firefox-ESR  (Standard, stabil)"
+echo -e "  5) Chromium     (leicht)"
+echo -e "  6) Keinen"
 echo ""
-read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-4]: "${RESET})" BROWSER_CHOICE
+read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-6]: "${RESET})" BROWSER_CHOICE
 
 case "$BROWSER_CHOICE" in
-    1) apt-get install -y chromium; success "Chromium installiert" ;;
-    2) apt-get install -y falkon; success "Falkon installiert" ;;
+    1)
+        info "Installiere Zen Browser..."
+        set +e
+        # Zen Browser AppImage via GitHub Releases
+        ZEN_URL=$(curl -s https://api.github.com/repos/zen-browser/desktop/releases/latest \
+            | grep "browser_download_url.*x86_64.AppImage\"" | head -1 | cut -d '"' -f 4)
+        if [[ -n "$ZEN_URL" ]]; then
+            curl -L "$ZEN_URL" -o /opt/zen-browser.AppImage
+            chmod +x /opt/zen-browser.AppImage
+            # FUSE für AppImage
+            apt-get install -y libfuse2 2>/dev/null || true
+            # Desktop-Eintrag
+            cat > /usr/share/applications/zen-browser.desktop << 'EOF'
+[Desktop Entry]
+Name=Zen Browser
+Comment=Privacy-focused web browser
+Exec=/opt/zen-browser.AppImage %u
+Icon=firefox
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
+StartupNotify=true
+EOF
+            DEFAULT_BROWSER_DESKTOP="zen-browser.desktop"
+            success "Zen Browser installiert"
+        else
+            warn "Zen Browser konnte nicht heruntergeladen werden — installiere Firefox-ESR als Fallback"
+            apt-get install -y firefox-esr
+            DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop"
+        fi
+        set -e
+        ;;
+    2)
+        info "Installiere LibreWolf..."
+        set +e
+        apt-get install -y extrepo 2>/dev/null || true
+        extrepo enable librewolf 2>/dev/null
+        apt-get update -qq
+        apt-get install -y librewolf && success "LibreWolf installiert" || {
+            warn "LibreWolf via extrepo fehlgeschlagen — versuche manuell..."
+            curl -fsSL https://deb.librewolf.net/keyring.gpg \
+                | gpg --dearmor | tee /usr/share/keyrings/librewolf.gpg > /dev/null
+            echo "deb [signed-by=/usr/share/keyrings/librewolf.gpg arch=amd64] https://deb.librewolf.net bookworm main" \
+                | tee /etc/apt/sources.list.d/librewolf.list
+            apt-get update -qq
+            apt-get install -y librewolf && success "LibreWolf installiert" || warn "LibreWolf fehlgeschlagen"
+        }
+        DEFAULT_BROWSER_DESKTOP="librewolf.desktop"
+        set -e
+        ;;
     3)
-       curl -fsS https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg \
-           | tee /usr/share/keyrings/brave-browser-archive-keyring.gpg > /dev/null
-       echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
-           | tee /etc/apt/sources.list.d/brave-browser.list
-       apt-get update -qq && apt-get install -y brave-browser
-       success "Brave installiert"
-       ;;
-    *) warn "Kein Browser installiert" ;;
+        curl -fsS https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg \
+            | tee /usr/share/keyrings/brave-browser-archive-keyring.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
+            | tee /etc/apt/sources.list.d/brave-browser.list
+        apt-get update -qq && apt-get install -y brave-browser
+        DEFAULT_BROWSER_DESKTOP="brave-browser.desktop"
+        success "Brave installiert"
+        ;;
+    4)
+        apt-get install -y firefox-esr
+        DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop"
+        success "Firefox-ESR installiert"
+        ;;
+    5)
+        apt-get install -y chromium
+        DEFAULT_BROWSER_DESKTOP="chromium.desktop"
+        success "Chromium installiert"
+        ;;
+    *)
+        warn "Kein Browser installiert"
+        DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop"
+        ;;
 esac
 
 # ============================================================
@@ -469,8 +544,6 @@ if ask_install "Steam"; then
     systemctl enable gamemoded 2>/dev/null || true
     success "Steam + GameMode installiert"
 
-    # Proton GE — bessere Kompatibilitaet und Performance als Standard-Proton
-    # Wird in ~/.steam/root/compatibilitytools.d/ installiert
     info "Installiere Proton GE..."
     PROTON_GE_URL=$(curl -s https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest \
         | grep "browser_download_url.*tar.gz" | cut -d '"' -f 4)
@@ -482,7 +555,7 @@ if ask_install "Steam"; then
         chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.steam/root/compatibilitytools.d/"
         success "Proton GE installiert"
     else
-        warn "Proton GE konnte nicht heruntergeladen werden — manuell installieren"
+        warn "Proton GE konnte nicht heruntergeladen werden"
     fi
 fi
 
@@ -501,23 +574,64 @@ EOF
 
 systemctl enable zramswap tlp earlyoom
 
+# Kernel-Tuning: Swappiness, Cache, Netzwerk
 cat > /etc/sysctl.d/99-snowfox.conf << 'EOF'
+# Speicher
 vm.swappiness=10
 vm.vfs_cache_pressure=50
+
+# Netzwerk-Performance (BBR3 ist im XanMod Kernel aktiv)
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+
+# IPv6 Privacy Extensions — zufällige IPv6-Adressen
+net.ipv6.conf.all.use_tempaddr=2
+net.ipv6.conf.default.use_tempaddr=2
 EOF
 
 # /tmp im RAM
 grep -q "tmpfs /tmp" /etc/fstab || echo "tmpfs /tmp tmpfs defaults,noatime,mode=1777 0 0" >> /etc/fstab
+
+# Firewall — einfacher Default-Deny
+apt-get install -y ufw
+ufw default deny incoming
+ufw default allow outgoing
+ufw --force enable
+success "Firewall (ufw) aktiviert: eingehend blockiert"
+
+# MAC-Randomisierung beim WLAN-Scan
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/99-snowfox-privacy.conf << 'EOF'
+[device]
+wifi.scan-rand-mac-address=yes
+
+[connection]
+wifi.cloned-mac-address=random
+ethernet.cloned-mac-address=random
+connection.stable-id=${CONNECTION}/${BOOT}
+EOF
+
+# DNS über systemd-resolved mit Cloudflare als Fallback
+# (verhindert DNS-Leaks)
+cat > /etc/systemd/resolved.conf.d/snowfox.conf << 'EOF'
+[Resolve]
+DNS=1.1.1.1#cloudflare-dns.com 9.9.9.9#dns.quad9.net
+FallbackDNS=8.8.8.8
+DNSSEC=yes
+DNSOverTLS=yes
+EOF
+mkdir -p /etc/systemd/resolved.conf.d
+systemctl enable systemd-resolved 2>/dev/null || true
 
 # Unbenoetigte Dienste deaktivieren
 for svc in avahi-daemon cups-browsed ModemManager colord; do
     systemctl disable "$svc" 2>/dev/null || true
 done
 
-# Power-Button: i3 Power-Menü übernimmt das — kein harter Shutdown via logind
+# Power-Button: i3 Power-Menü übernimmt das
 sed -i 's/#HandlePowerKey=.*/HandlePowerKey=ignore/' /etc/systemd/logind.conf
 
-success "Performance optimiert"
+success "Performance & Sicherheit optimiert"
 
 # ============================================================
 # SCHRITT 9 — Plymouth & Branding
@@ -621,7 +735,7 @@ cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
               ----------           
 ASCIIEOF
 
-# Repo-Configs kopieren (enthält alle i3, polybar, rofi, dunst, powermenu usw.)
+# Repo-Configs kopieren
 [[ -f "$CONFIG_DIR/xsettingsd" ]] && rm -f "$CONFIG_DIR/xsettingsd"
 if [[ -d "$SCRIPT_DIR/configs" ]]; then
     cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
@@ -636,7 +750,7 @@ if [[ -d "$SCRIPT_DIR/wallpapers" ]]; then
     success "Wallpapers kopiert"
 fi
 
-# modprobe Configs installieren (AMD CRTC Freeze Fix + NVIDIA)
+# modprobe Configs
 if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
     cp "$SCRIPT_DIR/configs/modprobe/amdgpu.conf" /etc/modprobe.d/amdgpu.conf 2>/dev/null || true
     cp "$SCRIPT_DIR/configs/modprobe/nvidia.conf" /etc/modprobe.d/nvidia.conf 2>/dev/null || true
@@ -644,13 +758,11 @@ if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
     success "modprobe Configs installiert"
 fi
 
-# Power-Menü aus Repo als System-Binary verfügbar machen
+# Power-Menü
 if [[ -f "$SCRIPT_DIR/configs/powermenu.sh" ]]; then
     cp "$SCRIPT_DIR/configs/powermenu.sh" /usr/local/bin/snowfox-powermenu
     chmod +x /usr/local/bin/snowfox-powermenu
     success "Power-Menü installiert"
-else
-    warn "configs/powermenu.sh nicht gefunden — wird übersprungen"
 fi
 
 # snowfox CLI & Greeting
@@ -666,24 +778,13 @@ if [[ -f "$SCRIPT_DIR/snowfox-greeting.sh" ]]; then
     success "snowfox-greeting installiert"
 fi
 
-# Greeting in .bashrc einbinden
 if ! grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null; then
     echo -e '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting' >> "$TARGET_HOME/.bashrc"
 fi
 
-# Standard-Anwendungen abfragen und setzen
+# Standard-Anwendungen setzen
 echo ""
-echo -e "${PURPLE}${BOLD}  Standard-Anwendungen festlegen:${RESET}"
-
-echo ""
-echo -e "  Dateimanager:"
-echo -e "  1) Thunar (Standard)"
-echo -e "  2) Keine Aenderung"
-read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-2]: "${RESET})" DEFAULT_FM
-[[ "$DEFAULT_FM" == "1" ]] && DEFAULT_FM_DESKTOP="thunar.desktop" || DEFAULT_FM_DESKTOP="thunar.desktop"
-
-echo ""
-echo -e "  Texteditor fuer Dateien:"
+echo -e "${PURPLE}${BOLD}  Standard-Texteditor:${RESET}"
 echo -e "  1) Mousepad (Standard)"
 echo -e "  2) VSCodium"
 read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-2]: "${RESET})" DEFAULT_EDITOR
@@ -692,31 +793,18 @@ case "$DEFAULT_EDITOR" in
     *) DEFAULT_EDITOR_DESKTOP="mousepad.desktop" ;;
 esac
 
-echo ""
-echo -e "  Standard-Browser:"
-echo -e "  1) Firefox-ESR"
-echo -e "  2) Chromium"
-echo -e "  3) Brave"
-read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-3]: "${RESET})" DEFAULT_BROWSER
-case "$DEFAULT_BROWSER" in
-    2) DEFAULT_BROWSER_DESKTOP="chromium.desktop" ;;
-    3) DEFAULT_BROWSER_DESKTOP="brave-browser.desktop" ;;
-    *) DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop" ;;
-esac
-
-# mimeapps.list mit korrekten Standard-Apps erstellen
 cat > "$TARGET_HOME/.config/mimeapps.list" << EOF
 [Default Applications]
-inode/directory=$DEFAULT_FM_DESKTOP
+inode/directory=thunar.desktop
 text/plain=$DEFAULT_EDITOR_DESKTOP
 text/x-python=$DEFAULT_EDITOR_DESKTOP
 text/x-shellscript=$DEFAULT_EDITOR_DESKTOP
 application/x-shellscript=$DEFAULT_EDITOR_DESKTOP
-x-scheme-handler/http=$DEFAULT_BROWSER_DESKTOP
-x-scheme-handler/https=$DEFAULT_BROWSER_DESKTOP
-text/html=$DEFAULT_BROWSER_DESKTOP
-application/xhtml+xml=$DEFAULT_BROWSER_DESKTOP
-application/pdf=firefox-esr.desktop
+x-scheme-handler/http=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
+x-scheme-handler/https=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
+text/html=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
+application/xhtml+xml=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
+application/pdf=${DEFAULT_BROWSER_DESKTOP:-firefox-esr.desktop}
 image/png=ristretto.desktop
 image/jpeg=ristretto.desktop
 image/gif=ristretto.desktop
@@ -727,7 +815,7 @@ application/zip=org.gnome.FileRoller.desktop
 application/x-tar=org.gnome.FileRoller.desktop
 EOF
 
-success "Standard-Anwendungen gesetzt (FM: $DEFAULT_FM_DESKTOP, Editor: $DEFAULT_EDITOR_DESKTOP, Browser: $DEFAULT_BROWSER_DESKTOP)"
+success "Standard-Anwendungen gesetzt"
 
 # Finale Berechtigungen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
@@ -749,5 +837,5 @@ echo "  ╚════██║██║╚████║██║   ██║
 echo "  ███████║██║ ╚███║╚██████╔╝╚███╔███╔╝██║      ╚██████╔╝██╔╝╚██╗"
 echo "  ╚══════╝╚═╝  ╚══╝ ╚═════╝  ╚══╝╚══╝ ╚═╝      ╚═════╝ ╚═╝  ╚═╝"
 echo -e "${RESET}"
-success "SnowFoxOS v2.0 erfolgreich installiert!"
-info "Bitte neu starten: sudo reboot"
+success "SnowFoxOS v2.1 erfolgreich installiert!"
+warn "Bitte neu starten: sudo reboot"
