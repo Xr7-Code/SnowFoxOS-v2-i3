@@ -2,6 +2,7 @@
 # ============================================================
 #  SnowFoxOS v2.1 — Installer
 #  Basis: Debian 12 (Bookworm) minimal
+#  Desktop: i3 + Polybar + Rofi + Dunst + i3lock
 #  Ausführen: sudo bash install.sh
 # ============================================================
 
@@ -109,16 +110,21 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
-# XanMod — DKMS-Tools zuerst, dann Kernel
-info "Installiere DKMS-Tools und XanMod LTS Kernel..."
+# ── XanMod Kernel ────────────────────────────────────────────
+# DKMS-Tools zuerst — werden für NVIDIA-Modulbau benötigt
+info "Installiere DKMS-Tools..."
 apt-get install -y --no-install-recommends dkms libdw-dev clang lld llvm
+success "DKMS-Tools installiert"
 
-# Korrekter GPG-Pfad und Repo-Eintrag mit Codename
+info "Installiere XanMod Kernel..."
+
+mkdir -p /etc/apt/keyrings
 wget -qO - https://dl.xanmod.org/archive.key \
-    | gpg --dearmor -vo /etc/apt/keyrings/xanmod-archive-keyring.gpg
+    | gpg --dearmor -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
 
-echo "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org $(lsb_release -sc) main" \
-    | tee /etc/apt/sources.list.d/xanmod-release.list
+# bookworm hardcodiert — lsb_release auf minimalem Debian liefert "n/a"
+echo "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org bookworm main" \
+    > /etc/apt/sources.list.d/xanmod-release.list
 
 wait_apt
 apt-get update -qq
@@ -129,8 +135,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
 XANMOD_EXIT=$?
 
 if [[ $XANMOD_EXIT -eq 0 ]]; then
-    success "XanMod LTS Kernel + Headers installiert"
-    # Alte Debian-Kernel entfernen
+    success "XanMod Kernel installiert (aktiv nach Reboot)"
     CURRENT_KERNEL=$(uname -r)
     while read -r pkg; do
         apt-get purge -y "$pkg" 2>/dev/null || true
@@ -160,7 +165,6 @@ step "2/10 — Hardware-Analyse & Treiber"
 IS_LAPTOP=false
 [[ "$(cat /sys/class/dmi/id/chassis_type 2>/dev/null)" =~ ^(8|9|10|14)$ ]] && IS_LAPTOP=true
 
-# CPU Microcode
 CPU_INFO=$(grep -m1 "vendor_id" /proc/cpuinfo)
 if echo "$CPU_INFO" | grep -qi "AuthenticAMD"; then
     apt-get install -y amd64-microcode
@@ -170,7 +174,6 @@ else
     success "Intel CPU Microcode installiert"
 fi
 
-# GPU-Check
 GPU_INFO=$(lspci | grep -iE 'vga|3d|display')
 HAS_NVIDIA=false
 HAS_AMD=false
@@ -180,15 +183,16 @@ echo "$GPU_INFO" | grep -qi "amd"    && HAS_AMD=true
 if $HAS_NVIDIA; then
     info "NVIDIA GPU erkannt — Installiere Treiber via CUDA-Repo..."
 
-    apt-get install -y clang-19 lld-19
-    # update-alternatives unkritisch — einzeln mit || true
-    update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-19  100 || true
-    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100 || true
-    update-alternatives --install /usr/bin/lld     lld     /usr/bin/lld-19    100 || true
-    update-alternatives --install /usr/bin/ld.lld  ld.lld  /usr/bin/lld-19    100 || true
-    update-alternatives --set clang  /usr/bin/clang-19  || true
-    update-alternatives --set lld    /usr/bin/lld-19    || true
-    update-alternatives --set ld.lld /usr/bin/lld-19    || true
+    apt-get install -y clang-19 lld-19 2>/dev/null || \
+        apt-get install -y clang lld || true
+
+    update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-19  100 2>/dev/null || true
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-19 100 2>/dev/null || true
+    update-alternatives --install /usr/bin/lld     lld     /usr/bin/lld-19    100 2>/dev/null || true
+    update-alternatives --install /usr/bin/ld.lld  ld.lld  /usr/bin/lld-19    100 2>/dev/null || true
+    update-alternatives --set clang  /usr/bin/clang-19  2>/dev/null || true
+    update-alternatives --set lld    /usr/bin/lld-19    2>/dev/null || true
+    update-alternatives --set ld.lld /usr/bin/lld-19    2>/dev/null || true
 
     curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub \
         | gpg --dearmor | tee /usr/share/keyrings/nvidia-cuda-keyring.gpg > /dev/null
@@ -214,20 +218,17 @@ EOF
         libvulkan1 libvulkan1:i386 \
         nvidia-vulkan-icd nvidia-vulkan-icd:i386
 
-    # Hybrid AMD+NVIDIA: envycontrol
     if $HAS_AMD; then
         if apt-cache show envycontrol > /dev/null 2>&1; then
             apt-get install -y envycontrol && success "envycontrol installiert"
         else
-            # venv-basierter pip-Fallback, kein --break-system-packages
             python3 -m venv /opt/envycontrol-venv 2>/dev/null || true
             /opt/envycontrol-venv/bin/pip install envycontrol 2>/dev/null || true
-            ln -sf /opt/envycontrol-venv/bin/envycontrol /usr/local/bin/envycontrol || true
+            ln -sf /opt/envycontrol-venv/bin/envycontrol /usr/local/bin/envycontrol 2>/dev/null || true
             success "envycontrol installiert (venv)"
         fi
     fi
 
-    # DKMS für XanMod-Kernel — Headers wurden oben bereits installiert
     XANMOD_KERNEL=$(ls /lib/modules 2>/dev/null | grep xanmod | sort -V | tail -1)
     NVIDIA_VER=$(ls /var/lib/dkms/nvidia/ 2>/dev/null | sort -V | tail -1)
     if [[ -n "$XANMOD_KERNEL" && -n "$NVIDIA_VER" ]]; then
@@ -301,7 +302,6 @@ apt-get install -y \
 
 systemctl enable bluetooth
 
-# Touchpad — spezifische Identifizierung
 mkdir -p /etc/X11/xorg.conf.d
 if [[ -f "$SCRIPT_DIR/configs/xorg/30-touchpad.conf" ]]; then
     cp "$SCRIPT_DIR/configs/xorg/30-touchpad.conf" /etc/X11/xorg.conf.d/30-touchpad.conf
@@ -322,7 +322,6 @@ EOF
     info "Touchpad-Config erstellt"
 fi
 
-# i3 von TTY1 starten
 BASH_PROFILE="$TARGET_HOME/.bash_profile"
 if ! grep -q "startx" "$BASH_PROFILE" 2>/dev/null; then
     echo '' >> "$BASH_PROFILE"
@@ -377,7 +376,6 @@ apt-get install -y \
     mpv \
     ffmpeg
 
-# Dateimanager
 echo ""
 echo -e "${PURPLE}${BOLD}  Dateimanager:${RESET}"
 echo -e "  1) Thunar  (grafisch, empfohlen)"
@@ -444,7 +442,6 @@ DEFAULT_BROWSER_DESKTOP="firefox-esr.desktop"
 case "$BROWSER_CHOICE" in
     1)
         info "Installiere Zen Browser..."
-        # Robustes URL-Parsing via python3 (kein fragiles grep/cut)
         ZEN_URL=""
         ZEN_JSON=$(curl -sf https://api.github.com/repos/zen-browser/desktop/releases/latest 2>/dev/null)
         if [[ -n "$ZEN_JSON" ]]; then
@@ -581,13 +578,11 @@ EOF
 grep -q "tmpfs /tmp" /etc/fstab || \
     echo "tmpfs /tmp tmpfs defaults,noatime,mode=1777 0 0" >> /etc/fstab
 
-# Firewall
 ufw default deny incoming  2>/dev/null || true
 ufw default allow outgoing 2>/dev/null || true
 ufw --force enable         2>/dev/null || true
 success "ufw Firewall aktiviert"
 
-# MAC-Randomisierung
 mkdir -p /etc/NetworkManager/conf.d
 cat > /etc/NetworkManager/conf.d/99-snowfox-privacy.conf << 'EOF'
 [device]
@@ -598,7 +593,6 @@ ethernet.cloned-mac-address=random
 connection.stable-id=${CONNECTION}/${BOOT}
 EOF
 
-# DNS-over-TLS
 mkdir -p /etc/systemd/resolved.conf.d
 cat > /etc/systemd/resolved.conf.d/snowfox.conf << 'EOF'
 [Resolve]
@@ -655,7 +649,7 @@ convert -size 1920x1080 xc:#0f0f0f "$PLYMOUTH_DIR/background.png" 2>/dev/null ||
 plymouth-set-default-theme snowfox 2>/dev/null || true
 update-initramfs -u 2>/dev/null || true
 
-success "Branding & Boot-Screen bereit"
+success "Boot-Screen bereit"
 
 # ============================================================
 # SCHRITT 10 — Konfiguration & Abschluss
@@ -666,16 +660,35 @@ CONFIG_DIR="$TARGET_HOME/.config"
 mkdir -p "$CONFIG_DIR/neofetch"
 mkdir -p "$TARGET_HOME/Pictures/wallpapers"
 
+# ── Distro-Identität ─────────────────────────────────────────
+# /etc/os-release: bestimmt was neofetch, fastfetch usw. anzeigen
 cat > /etc/os-release << 'EOF'
 PRETTY_NAME="SnowFoxOS 2.1"
 NAME="SnowFoxOS"
-ID=debian
+VERSION="2.1"
+VERSION_ID="2.1"
+ID=snowfoxos
 ID_LIKE=debian
+HOME_URL="https://github.com/Xr7-Code/SnowFoxOS-v2-i3"
 ANSI_COLOR="0;35"
 EOF
-echo "snowfox"       > /etc/hostname
-echo "SnowFoxOS 2.1" > /etc/issue
 
+# /etc/lsb-release — wird von manchen Tools gelesen
+cat > /etc/lsb-release << 'EOF'
+DISTRIB_ID=SnowFoxOS
+DISTRIB_RELEASE=2.1
+DISTRIB_CODENAME=fox
+DISTRIB_DESCRIPTION="SnowFoxOS 2.1"
+EOF
+
+echo "snowfox"                  > /etc/hostname
+echo "SnowFoxOS 2.1"            > /etc/issue
+echo "SnowFoxOS 2.1 \n \l"      > /etc/issue.net
+hostname snowfox 2>/dev/null || true
+
+success "Distro-Identität auf SnowFoxOS gesetzt"
+
+# Neofetch
 cat > "$CONFIG_DIR/neofetch/config.conf" << EOF
 print_info() {
     info title
@@ -748,7 +761,7 @@ grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null || \
     printf '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting\n' \
     >> "$TARGET_HOME/.bashrc"
 
-# Standard-Anwendungen
+# Standard-Texteditor
 echo ""
 echo -e "${PURPLE}${BOLD}  Standard-Texteditor:${RESET}"
 echo -e "  1) Mousepad (Standard)"
@@ -782,7 +795,7 @@ application/x-tar=org.gnome.FileRoller.desktop
 MEOF
 success "Standard-Anwendungen gesetzt"
 
-# Berechtigungen — NACH allen Kopieroperationen
+# Berechtigungen — nach allen Kopieroperationen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
 
 # DKMS-Hooks wiederherstellen
