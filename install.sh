@@ -104,24 +104,143 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
-# XanMod LTS Kernel — immer installiert, kein optionaler Skip
-# XanMod LTS 6.12/6.18 = stabil, NVIDIA-kompatibel, alle XanMod-Optimierungen (BBR3, futex2, x64v3)
-info "Installiere XanMod LTS Kernel..."
-curl -fSL https://dl.xanmod.org/archive.key | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
-echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
-    | tee /etc/apt/sources.list.d/xanmod-kernel.list
+# ============================================================
+# XanMod LTS Kernel — stabile Installation
+# ============================================================
+
+step "Kernel — XanMod LTS"
+
+info "Bereite Kernel-Installation vor..."
+
+# Kernel/DKMS Basis
+apt-get install -y \
+    initramfs-tools \
+    linux-base \
+    kmod \
+    dkms \
+    curl \
+    gnupg
+
+# Vorher kaputte Zustände reparieren
+dpkg --configure -a || true
+apt-get -f install -y || true
+
+# DKMS komplett deaktivieren während Kernel-Install
+mkdir -p /tmp/snowfox-dkms-backup
+
+DKMS_HOOKS=(
+    /etc/kernel/postinst.d/dkms
+    /etc/kernel/prerm.d/dkms
+    /usr/lib/kernel/install.d/50-dkms.install
+)
+
+for hook in "${DKMS_HOOKS[@]}"; do
+    if [[ -f "$hook" ]]; then
+        mv "$hook" /tmp/snowfox-dkms-backup/
+    fi
+done
+
+success "DKMS Hooks deaktiviert"
+
+# XanMod Repo
+install -d -m 0755 /usr/share/keyrings
+
+curl -fsSL https://dl.xanmod.org/archive.key \
+    | gpg --dearmor -o /usr/share/keyrings/xanmod-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main" \
+    > /etc/apt/sources.list.d/xanmod-kernel.list
+
 apt-get update -qq
 
+# CPU Detection
+if grep -qw avx2 /proc/cpuinfo; then
+    XANMOD_FLAVOR="x64v3"
+else
+    XANMOD_FLAVOR="x64v2"
+fi
+
+XANMOD_KERNEL="linux-xanmod-lts-${XANMOD_FLAVOR}"
+XANMOD_HEADERS="linux-headers-xanmod-lts-${XANMOD_FLAVOR}"
+
+info "Installiere $XANMOD_KERNEL"
+
+# Kernel + Headers
 set +e
-DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3
+
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    "$XANMOD_KERNEL" \
+    "$XANMOD_HEADERS"
+
 XANMOD_EXIT=$?
+
 set -e
 
-if [[ $XANMOD_EXIT -eq 0 ]]; then
-    success "XanMod LTS Kernel installiert (aktiv nach Reboot)"
+if [[ $XANMOD_EXIT -ne 0 ]]; then
+
+    warn "Kernel-Installation fehlgeschlagen"
+
+    echo ""
+    echo "========= APT LOG ========="
+    tail -n 80 /var/log/apt/term.log 2>/dev/null || true
+    echo "==========================="
+    echo ""
+
+    # Recovery
+    dpkg --configure -a || true
+    apt-get -f install -y || true
+
 else
-    warn "XanMod LTS Installation schlug fehl (Exit $XANMOD_EXIT) — Installation wird fortgesetzt..."
+
+    success "XanMod Kernel installiert"
+
+    # Initramfs sauber bauen
+    update-initramfs -c -k all
+
+    # GRUB neu erzeugen
+    update-grub
+
 fi
+
+# DKMS Hooks wiederherstellen
+for file in /tmp/snowfox-dkms-backup/*; do
+    [[ -f "$file" ]] || continue
+
+    base=$(basename "$file")
+
+    case "$base" in
+        dkms)
+            if [[ "$file" == *postinst* ]]; then
+                mv "$file" /etc/kernel/postinst.d/dkms
+            else
+                mv "$file" /etc/kernel/prerm.d/dkms
+            fi
+        ;;
+        50-dkms.install)
+            mv "$file" /usr/lib/kernel/install.d/50-dkms.install
+        ;;
+    esac
+done
+
+success "DKMS Hooks wiederhergestellt"
+
+# Alte Debian-Kernel entfernen
+info "Bereinige alte Debian-Kernel..."
+
+CURRENT_KERNEL="$(uname -r)"
+
+for pkg in $(dpkg -l | awk '/linux-image-[0-9]/{print $2}'); do
+
+    if [[ "$pkg" != *xanmod* ]] && [[ "$pkg" != *"$CURRENT_KERNEL"* ]]; then
+        apt-get purge -y "$pkg" 2>/dev/null || true
+    fi
+
+done
+
+apt-get autoremove -y
+update-grub || true
+
+success "Kernel-Bereinigung abgeschlossen"
 
 # Alte Debian-Kernel entfernen — SnowFoxOS nutzt nur XanMod
 info "Entferne alte Debian-Kernel..."
