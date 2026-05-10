@@ -109,18 +109,23 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
-# XanMod LTS Kernel + passende Headers (Headers zwingend für DKMS/NVIDIA)
-info "Installiere XanMod LTS Kernel + Headers..."
-curl -fSL https://dl.xanmod.org/archive.key \
-    | gpg --dearmor --yes -o /usr/share/keyrings/xanmod-archive-keyring.gpg
-echo 'deb [signed-by=/usr/share/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org releases main' \
-    | tee /etc/apt/sources.list.d/xanmod-kernel.list
+# XanMod — DKMS-Tools zuerst, dann Kernel
+info "Installiere DKMS-Tools und XanMod LTS Kernel..."
+apt-get install -y --no-install-recommends dkms libdw-dev clang lld llvm
+
+# Korrekter GPG-Pfad und Repo-Eintrag mit Codename
+wget -qO - https://dl.xanmod.org/archive.key \
+    | gpg --dearmor -vo /etc/apt/keyrings/xanmod-archive-keyring.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org $(lsb_release -sc) main" \
+    | tee /etc/apt/sources.list.d/xanmod-release.list
+
 wait_apt
 apt-get update -qq
 wait_apt
-DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    linux-xanmod-lts-x64v3 \
-    linux-headers-xanmod-lts-x64v3
+
+# linux-xanmod-x64v3 zieht Image + Headers automatisch mit
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
 XANMOD_EXIT=$?
 
 if [[ $XANMOD_EXIT -eq 0 ]]; then
