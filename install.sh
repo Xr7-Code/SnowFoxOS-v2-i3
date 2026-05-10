@@ -120,7 +120,7 @@ info "Installiere XanMod Kernel..."
 
 mkdir -p /etc/apt/keyrings
 wget -qO - https://dl.xanmod.org/archive.key \
-    | gpg --dearmor -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
+    | gpg --dearmor --yes -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
 
 # bookworm hardcodiert — lsb_release auf minimalem Debian liefert "n/a"
 echo "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org bookworm main" \
