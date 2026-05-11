@@ -795,6 +795,15 @@ application/x-tar=org.gnome.FileRoller.desktop
 MEOF
 success "Standard-Anwendungen gesetzt"
 
+# Alle Scripts ausführbar machen
+chmod +x "$CONFIG_DIR/polybar/launch.sh"        2>/dev/null || true
+chmod +x "$CONFIG_DIR/snowfox-network.sh"       2>/dev/null || true
+chmod +x "$CONFIG_DIR/powermenu.sh"             2>/dev/null || true
+chmod +x "$CONFIG_DIR/snowfox-display.sh"       2>/dev/null || true
+chmod +x "$CONFIG_DIR/snowfox-lock.sh"          2>/dev/null || true
+# Alle .sh Dateien im config-Verzeichnis pauschal ausführbar machen
+find "$CONFIG_DIR" -name "*.sh" -exec chmod +x {} \;
+
 # Berechtigungen — nach allen Kopieroperationen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
 
