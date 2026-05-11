@@ -131,7 +131,7 @@ apt-get update -qq
 wait_apt
 
 # linux-xanmod-x64v3 zieht Image + Headers automatisch mit
-DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3
 XANMOD_EXIT=$?
 
 if [[ $XANMOD_EXIT -eq 0 ]]; then
