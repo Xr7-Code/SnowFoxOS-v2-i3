@@ -120,7 +120,7 @@ info "Installiere XanMod Kernel..."
 
 mkdir -p /etc/apt/keyrings
 wget -qO - https://dl.xanmod.org/archive.key \
-    | gpg --dearmor --yes -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
+    | gpg --dearmor -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
 
 # bookworm hardcodiert — lsb_release auf minimalem Debian liefert "n/a"
 echo "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org bookworm main" \
@@ -131,7 +131,7 @@ apt-get update -qq
 wait_apt
 
 # linux-xanmod-x64v3 zieht Image + Headers automatisch mit
-DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
 XANMOD_EXIT=$?
 
 if [[ $XANMOD_EXIT -eq 0 ]]; then
@@ -794,15 +794,6 @@ application/zip=org.gnome.FileRoller.desktop
 application/x-tar=org.gnome.FileRoller.desktop
 MEOF
 success "Standard-Anwendungen gesetzt"
-
-# Alle Scripts ausführbar machen
-chmod +x "$CONFIG_DIR/polybar/launch.sh"        2>/dev/null || true
-chmod +x "$CONFIG_DIR/snowfox-network.sh"       2>/dev/null || true
-chmod +x "$CONFIG_DIR/powermenu.sh"             2>/dev/null || true
-chmod +x "$CONFIG_DIR/snowfox-display.sh"       2>/dev/null || true
-chmod +x "$CONFIG_DIR/snowfox-lock.sh"          2>/dev/null || true
-# Alle .sh Dateien im config-Verzeichnis pauschal ausführbar machen
-find "$CONFIG_DIR" -name "*.sh" -exec chmod +x {} \;
 
 # Berechtigungen — nach allen Kopieroperationen
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
