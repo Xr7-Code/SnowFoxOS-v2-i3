@@ -43,7 +43,7 @@ exec --no-startup-id nm-applet --no-agent &
 exec --no-startup-id redshift
 
 # Clipboard-Manager
-exec --no-startup-id clipit
+exec --no-startup-id diodon
 
 # Bildschirmsperre bei Suspend — KEIN Timeout
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork -c 000000

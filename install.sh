@@ -116,11 +116,14 @@ info "Installiere DKMS-Tools..."
 apt-get install -y --no-install-recommends dkms libdw-dev clang lld llvm
 success "DKMS-Tools installiert"
 
-info "Installiere XanMod Kernel..."
+info "Installiere XanMod LTS Kernel..."
+# Broken packages bereinigen bevor XanMod installiert wird
+dpkg --configure -a 2>/dev/null || true
+apt-get -f install -y 2>/dev/null || true
 
 mkdir -p /etc/apt/keyrings
 wget -qO - https://dl.xanmod.org/archive.key \
-    | gpg --dearmor -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
+    | gpg --dearmor --yes -o /etc/apt/keyrings/xanmod-archive-keyring.gpg
 
 # bookworm hardcodiert — lsb_release auf minimalem Debian liefert "n/a"
 echo "deb [signed-by=/etc/apt/keyrings/xanmod-archive-keyring.gpg] http://deb.xanmod.org bookworm main" \
@@ -131,7 +134,7 @@ apt-get update -qq
 wait_apt
 
 # linux-xanmod-x64v3 zieht Image + Headers automatisch mit
-DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-x64v3
+DEBIAN_FRONTEND=noninteractive apt-get install -y linux-xanmod-lts-x64v3
 XANMOD_EXIT=$?
 
 if [[ $XANMOD_EXIT -eq 0 ]]; then
@@ -296,7 +299,7 @@ apt-get install -y \
     picom \
     xss-lock \
     xserver-xorg-input-libinput \
-    clipit \
+    diodon \
     cups cups-bsd cups-client \
     printer-driver-splix
 
@@ -705,7 +708,7 @@ print_info() {
     info "Memory" memory
 }
 image_backend="ascii"
-image_source="$CONFIG_DIR/neofetch/snowfox.txt"
+image_source="~/.config/neofetch/snowfox.txt"
 ascii_colors=(5 7)
 EOF
 
@@ -761,6 +764,19 @@ grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null || \
     printf '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting\n' \
     >> "$TARGET_HOME/.bashrc"
 
+# Standard-Dateimanager
+echo ""
+echo -e "${PURPLE}${BOLD}  Standard-Dateimanager:${RESET}"
+echo -e "  1) Thunar  (grafisch, empfohlen)"
+echo -e "  2) Nautilus (GNOME)"
+echo -e "  3) MC      (Terminal)"
+read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-3]: "${RESET})" DEFAULT_FM
+case "$DEFAULT_FM" in
+    2) DEFAULT_FM_DESKTOP="org.gnome.Nautilus.desktop" ;;
+    3) DEFAULT_FM_DESKTOP="mc.desktop" ;;
+    *) DEFAULT_FM_DESKTOP="thunar.desktop" ;;
+esac
+
 # Standard-Texteditor
 echo ""
 echo -e "${PURPLE}${BOLD}  Standard-Texteditor:${RESET}"
@@ -774,6 +790,7 @@ esac
 
 cat > "$CONFIG_DIR/mimeapps.list" << MEOF
 [Default Applications]
+inode/directory=$DEFAULT_FM_DESKTOP
 inode/directory=thunar.desktop
 text/plain=$DEFAULT_EDITOR_DESKTOP
 text/x-python=$DEFAULT_EDITOR_DESKTOP
