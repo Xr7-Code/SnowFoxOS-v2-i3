@@ -587,13 +587,22 @@ ufw --force enable         2>/dev/null || true
 success "ufw Firewall aktiviert"
 
 mkdir -p /etc/NetworkManager/conf.d
+
+# managed=true — wichtig damit WiFi von NetworkManager verwaltet wird
+cat > /etc/NetworkManager/NetworkManager.conf << 'EOF'
+[main]
+plugins=ifupdown,keyfile
+
+[ifupdown]
+managed=true
+EOF
+
 cat > /etc/NetworkManager/conf.d/99-snowfox-privacy.conf << 'EOF'
 [device]
 wifi.scan-rand-mac-address=yes
 [connection]
 wifi.cloned-mac-address=random
 ethernet.cloned-mac-address=random
-connection.stable-id=${CONNECTION}/${BOOT}
 EOF
 
 mkdir -p /etc/systemd/resolved.conf.d
@@ -649,8 +658,8 @@ EOF
 [[ -f "$SCRIPT_DIR/assets/fuchs.png" ]] && \
     convert "$SCRIPT_DIR/assets/fuchs.png" -resize 200x200 "$PLYMOUTH_DIR/logo.png" 2>/dev/null || true
 convert -size 1920x1080 xc:#0f0f0f "$PLYMOUTH_DIR/background.png" 2>/dev/null || true
-plymouth-set-default-theme snowfox 2>/dev/null || true
-update-initramfs -u 2>/dev/null || true
+# -R baut initramfs direkt nach theme-Wechsel neu
+plymouth-set-default-theme -R snowfox 2>/dev/null || { plymouth-set-default-theme snowfox 2>/dev/null || true; update-initramfs -u 2>/dev/null || true; }
 
 success "Boot-Screen bereit"
 
@@ -737,6 +746,15 @@ if [[ -d "$SCRIPT_DIR/configs" ]]; then
     success "Konfigurationsdateien kopiert"
 else
     warn "configs/-Verzeichnis nicht gefunden"
+fi
+
+# Polybar modules-right dynamisch anpassen
+POLYBAR_CONF="$CONFIG_DIR/polybar/config.ini"
+if [[ -f "$POLYBAR_CONF" ]]; then
+    if $IS_LAPTOP; then
+        sed -i 's/^modules-right = memory network pulseaudio tray/modules-right = memory network pulseaudio backlight battery tray/' "$POLYBAR_CONF"
+        success "Polybar: Akku + Helligkeit aktiviert (Laptop erkannt)"
+    fi
 fi
 
 [[ -d "$SCRIPT_DIR/wallpapers" ]] && \
