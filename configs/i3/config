@@ -137,6 +137,8 @@ for_window [title="MEGAsync"]              floating enable, move position center
 # Verhindert dass Tray-Popups den Fokus stehlen und sofort schließen
 no_focus [class="MEGAsync"]
 
+for_window [class="jetbrains-toolbox"] floating enable, move absolute position 1310 32
+
 # ── Resize Mode ─────────────────────────────────────────────
 mode "resize" {
     bindsym Left  resize shrink width  20px
