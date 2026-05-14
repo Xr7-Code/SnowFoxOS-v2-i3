@@ -32,7 +32,7 @@ smart_borders on
 
 # ── Autostart ───────────────────────────────────────────────
 
-exec_always --no-startup-id feh --bg-scale ~/Pictures/wallpapers/wallpaper.jpg
+exec_always --no-startup-id ~/.fehbg
 exec_always --no-startup-id picom --config ~/.config/picom.conf
 exec_always --no-startup-id ~/.config/polybar/launch.sh
 
@@ -56,6 +56,7 @@ bindsym $mod+Return exec $term
 bindsym $mod+space exec rofi -show drun -theme ~/.config/rofi/config.rasi
 bindsym $mod+e exec thunar
 bindsym $mod+n exec ~/.config/snowfox-network.sh
+bindsym $mod+w exec ~/.config/snowfox-wallpaper.sh
 bindsym $mod+l exec i3lock -c 000000
 bindsym $mod+p exec ~/.config/snowfox-display.sh
 
@@ -96,7 +97,6 @@ bindsym $mod+h split h
 bindsym $mod+v split v
 bindsym $mod+f fullscreen toggle
 bindsym $mod+s layout stacking
-bindsym $mod+w layout tabbed
 bindsym $mod+t layout toggle split
 
 bindsym $mod+Shift+space floating toggle
@@ -136,8 +136,6 @@ for_window [class="MEGAsync"]              floating enable, move position center
 for_window [title="MEGAsync"]              floating enable, move position center
 # Verhindert dass Tray-Popups den Fokus stehlen und sofort schließen
 no_focus [class="MEGAsync"]
-
-for_window [class="jetbrains-toolbox"] floating enable, move absolute position 1310 32
 
 # ── Resize Mode ─────────────────────────────────────────────
 mode "resize" {

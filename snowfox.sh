@@ -262,9 +262,39 @@ cmd_download() {
         exit 1
     fi
 
-    if [[ -z "$1" ]]; then
-        err "Verwendung: snowfox download <URL>"
-        exit 1
+    QUERY="$*"
+    if [[ -z "$QUERY" ]]; then
+        read -rp "$(echo -e ${PURPLE}${BOLD}"Suche zum Download: "${RESET})" QUERY
+        [[ -z "$QUERY" ]] && return
+    fi
+
+    if [[ "$QUERY" =~ ^http ]]; then
+        URL="$QUERY"
+    else
+        fox "Suche auf YouTube: ${BOLD}$QUERY${RESET}..."
+        
+        # Holt Top 5 Ergebnisse (Titel|ID)
+        mapfile -t RESULTS < <(yt-dlp --print "%(title)s|%(id)s" --flat-playlist "ytsearch5:$QUERY" 2>/dev/null)
+        
+        if [[ ${#RESULTS[@]} -eq 0 ]]; then
+            err "Keine Ergebnisse gefunden."
+            return
+        fi
+
+        divider
+        i=1
+        for res in "${RESULTS[@]}"; do
+            title=$(echo "$res" | cut -d'|' -f1)
+            echo -e "  ${CYAN}$i${RESET}) $title"
+            ((i++))
+        done
+        divider
+
+        read -rp "$(echo -e ${PURPLE}${BOLD}"Auswahl [1-5]: "${RESET})" CHOICE
+        [[ -z "$CHOICE" || ! "$CHOICE" =~ ^[1-5]$ ]] && return
+        
+        ID=$(echo "${RESULTS[$((CHOICE-1))]}" | cut -d'|' -f2)
+        URL="https://www.youtube.com/watch?v=$ID"
     fi
 
     fox "Was möchtest du herunterladen?"
@@ -278,13 +308,37 @@ cmd_download() {
     mkdir -p "$OUTDIR"
 
     case "$FORMAT" in
-        1) yt-dlp -o "$OUTDIR/%(title)s.%(ext)s" "$1" ;;
-        2) yt-dlp -x --audio-format mp3 -o "$OUTDIR/%(title)s.%(ext)s" "$1" ;;
-        3) yt-dlp -x --audio-format opus -o "$OUTDIR/%(title)s.%(ext)s" "$1" ;;
+        1) yt-dlp -o "$OUTDIR/%(title)s.%(ext)s" "$URL" ;;
+        2) yt-dlp -x --audio-format mp3 -o "$OUTDIR/%(title)s.%(ext)s" "$URL" ;;
+        3) yt-dlp -x --audio-format opus -o "$OUTDIR/%(title)s.%(ext)s" "$URL" ;;
         *) err "Ungültige Auswahl." ;;
     esac
 
     ok "Gespeichert in: $OUTDIR"
+}
+
+# ============================================================
+# snowfox fetch (Multi-Part Download)
+# ============================================================
+cmd_fetch() {
+    if ! command -v aria2c &>/dev/null; then
+        err "aria2 nicht gefunden. Installiere es mit: sudo apt install aria2"
+        exit 1
+    fi
+
+    if [[ -z "$1" ]]; then
+        err "Verwendung: snowfox fetch <URL>"
+        exit 1
+    fi
+
+    URL="$1"
+    OUTDIR="$HOME/Downloads"
+    mkdir -p "$OUTDIR"
+
+    fox "Starte Multi-Part Download (16 Verbindungen)..."
+    aria2c -x 16 -s 16 -d "$OUTDIR" --continue=true --summary-interval=5 "$URL"
+
+    ok "Download abgeschlossen in: $OUTDIR"
 }
 
 # ============================================================
@@ -544,11 +598,13 @@ cmd_help() {
     echo -e "  ${CYAN}${BOLD}snowfox autostart [list|enable|disable]${RESET} — Autostart verwalten"
     echo -e "  ${CYAN}${BOLD}snowfox airmode [on|off|status]${RESET} — Funk komplett deaktivieren"
     echo -e "  ${CYAN}${BOLD}snowfox kill [mic|cam|all|restore]${RESET} — Hardware deaktivieren"
-    echo -e "  ${CYAN}${BOLD}snowfox download <URL>${RESET}      — Video/Audio herunterladen"
-    echo -e "  ${CYAN}${BOLD}snowfox stream <URL>${RESET}        — URL direkt streamen"
+    echo -e "  ${CYAN}${BOLD}snowfox download [Suche/URL]${RESET} — Video/Audio suchen oder via URL herunterladen"
+    echo -e "  ${CYAN}${BOLD}snowfox fetch <URL>${RESET}          — Highspeed Multi-Part Download via aria2"
+    echo -e "  ${CYAN}${BOLD}snowfox stream [Suche/URL]${RESET}   — Video/Audio suchen oder via URL streamen"
     echo -e "  ${CYAN}${BOLD}snowfox pass [add|get|list|remove]${RESET} — Passwort-Manager"
     echo -e "  ${CYAN}${BOLD}snowfox tip${RESET}                 — Sicherheitstipp"
     echo -e "  ${CYAN}${BOLD}snowfox network${RESET}             — Netzwerk-Manager (Wofi)"
+    echo -e "  ${CYAN}${BOLD}snowfox wallpaper${RESET}           — Hintergrundbild wechseln"
     echo -e "  ${CYAN}${BOLD}snowfox ai${RESET}                  — Offline-KI"
     echo -e "  ${CYAN}${BOLD}snowfox help${RESET}                — diese Hilfe"
     echo ""
@@ -824,6 +880,7 @@ case "$1" in
     airmode)  cmd_airmode "$2" ;;
     kill)     cmd_kill "$2" ;;
     download) cmd_download "$2" ;;
+    fetch)    cmd_fetch "$2" ;;
     stream)   cmd_stream "$2" ;;
     pass)     cmd_pass "$2" "$3" ;;
     tip)      cmd_tip ;;
@@ -832,6 +889,7 @@ case "$1" in
     profile)  cmd_profile "$2" ;;
     autostart)    cmd_start "$2" "$3" ;;
     network)  exec ~/.config/snowfox-network.sh ;;
+    wallpaper) exec ~/.config/snowfox-wallpaper.sh ;;
     help|"")  cmd_help ;;
     *)
         err "Unbekannter Befehl: $1"

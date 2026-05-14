@@ -43,6 +43,11 @@ if [[ $EUID -ne 0 ]]; then
     error "Bitte mit sudo ausführen: sudo bash install.sh"
 fi
 
+# Validierung der Basis-Distribution
+if [[ ! -f /etc/debian_version ]] || ! grep -q "^12\." /etc/debian_version; then
+    warn "Dieses Script ist für Debian 12 (Bookworm) optimiert. Die Ausführung auf anderen Versionen kann zu Fehlern führen."
+fi
+
 TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null || echo '')}"
 if [[ -z "$TARGET_USER" || "$TARGET_USER" == "root" ]]; then
     read -rp "Benutzername: " TARGET_USER
@@ -90,6 +95,9 @@ apt-get install -y \
     curl wget git unzip \
     build-essential \
     ca-certificates \
+    aria2 \
+    fzf \
+    lz4 \
     gnupg \
     pciutils usbutils \
     htop btop neofetch \
@@ -111,6 +119,12 @@ sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
 # ── XanMod Kernel ────────────────────────────────────────────
+info "Prüfe CPU-Kompatibilität für x64v3..."
+if ! grep -q "avx2" /proc/cpuinfo; then
+    warn "CPU unterstützt kein AVX2. x64v3 Kernel wird nicht funktionieren."
+    error "Installation abgebrochen, um System-Brick zu verhindern."
+fi
+
 # DKMS-Tools zuerst — werden für NVIDIA-Modulbau benötigt
 info "Installiere DKMS-Tools..."
 apt-get install -y --no-install-recommends dkms libdw-dev clang lld llvm
@@ -140,13 +154,15 @@ XANMOD_EXIT=$?
 if [[ $XANMOD_EXIT -eq 0 ]]; then
     success "XanMod Kernel installiert (aktiv nach Reboot)"
     CURRENT_KERNEL=$(uname -r)
-    while read -r pkg; do
-        apt-get purge -y "$pkg" 2>/dev/null || true
-    done < <(dpkg --list 2>/dev/null | awk '/^ii.*linux-image-[0-9]/{print $2}' \
-        | grep -v "$CURRENT_KERNEL" | grep -v "xanmod")
-    apt-get autoremove -y 2>/dev/null || true
+    # GRUB für Plymouth (Boot-Logo) vorbereiten
+    if [[ -f /etc/default/grub ]]; then
+        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 quiet splash"/' /etc/default/grub
+        sed -i 's/quiet splash quiet splash/quiet splash/g' /etc/default/grub
+        sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' /etc/default/grub
+    fi
+    info "Alte Kernel wurden zur Sicherheit behalten. Bereinigung nach erstem erfolgreichen Boot empfohlen."
     update-grub 2>/dev/null || true
-    success "Alte Kernel entfernt"
+    success "Boot-Konfiguration aktualisiert"
 else
     warn "XanMod fehlgeschlagen (Exit $XANMOD_EXIT) — Installation wird fortgesetzt"
 fi
@@ -278,7 +294,12 @@ apt-get install -y \
     rofi \
     dunst \
     libnotify-bin \
+    libappindicator3-1 \
+    libayatana-appindicator3-1 \
     feh \
+    xdg-desktop-portal-gtk \
+    xdg-desktop-portal \
+    libdbusmenu-gtk3-4 \
     redshift \
     scrot \
     brightnessctl \
@@ -293,6 +314,9 @@ apt-get install -y \
     fonts-font-awesome \
     papirus-icon-theme \
     arc-theme \
+    qt5ct \
+    qt6ct \
+    qt5-style-plugins \
     xsettingsd \
     lxpolkit \
     lxappearance \
@@ -335,6 +359,18 @@ fi
 cat > "$TARGET_HOME/.xinitrc" << 'EOF'
 #!/bin/sh
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
+
+# Theme & Dark Mode Konfiguration
+export GTK_THEME=Arc-Dark
+export QT_QPA_PLATFORMTHEME=qt5ct
+export _JAVA_AWT_WM_NONREPARENTING=1
+
+# Globaler Dark Mode für GTK4/Electron/Modern Apps
+gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+gsettings set org.gnome.desktop.interface gtk-theme 'Arc-Dark'
+
+xsettingsd &
+
 if [ -f /usr/bin/dbus-launch ]; then
     eval $(/usr/bin/dbus-launch --sh-syntax --exit-with-session)
 fi
@@ -567,6 +603,12 @@ PERCENT=50
 PRIORITY=100
 EOF
 
+# Initramfs auf lz4 umstellen für schnelleren Boot
+if [[ -f /etc/initramfs-tools/initramfs.conf ]]; then
+    sed -i 's/^COMPRESS=.*/COMPRESS=lz4/' /etc/initramfs-tools/initramfs.conf
+    update-initramfs -u 2>/dev/null || true
+fi
+
 systemctl enable zramswap earlyoom tlp 2>/dev/null || true
 
 cat > /etc/sysctl.d/99-snowfox.conf << 'EOF'
@@ -618,6 +660,10 @@ systemctl enable systemd-resolved 2>/dev/null || true
 for svc in avahi-daemon cups-browsed ModemManager colord; do
     systemctl disable "$svc" 2>/dev/null || true
 done
+
+# NetworkManager-wait-online deaktivieren, um Boot-Verzögerung zu vermeiden
+systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true
 
 sed -i 's/#HandlePowerKey=.*/HandlePowerKey=ignore/' /etc/systemd/logind.conf
 
@@ -700,8 +746,43 @@ hostname snowfox 2>/dev/null || true
 
 success "Distro-Identität auf SnowFoxOS gesetzt"
 
-# Neofetch
+# ── Dark Mode & Theme Aktivierung ────────────────────────────
+info "Aktiviere Arc-Dark Design & Papirus Icons..."
+
+# Verzeichnisse erstellen
+mkdir -p "$CONFIG_DIR/xsettingsd"
+
+# GTK3/4 Konfiguration
+for version in "3.0" "4.0"; do
+    mkdir -p "$CONFIG_DIR/gtk-$version"
+    cat > "$CONFIG_DIR/gtk-$version/settings.ini" << GEOF
+[Settings]
+gtk-theme-name=Arc-Dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-font-name=Inter 10
+gtk-cursor-theme-name=Adwaita
+gtk-application-prefer-dark-theme=1
+GEOF
+done
+
+# GTK2 Konfiguration
+cat > "$TARGET_HOME/.gtkrc-2.0" << G2EOF
+include "/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc"
+gtk-theme-name="Arc-Dark"
+gtk-icon-theme-name="Papirus-Dark"
+gtk-font-name="Inter 10"
+G2EOF
+
+# xsettingsd (wichtig für i3/X11 Apps)
+cat > "$CONFIG_DIR/xsettingsd/xsettingsd.conf" << XEOF
+Net/ThemeName "Arc-Dark"
+Net/IconThemeName "Papirus-Dark"
+Gtk/CursorThemeName "Adwaita"
+XEOF
+
+# ── Neofetch Konfiguration ───────────────────────────────────
 cat > "$CONFIG_DIR/neofetch/config.conf" << EOF
+
 print_info() {
     info title
     info underline
@@ -714,10 +795,11 @@ print_info() {
     info "WM" wm
     info "CPU" cpu
     info "GPU" gpu
-    info "Memory" memory
+    info "Memory" memory # Zeigt RAM in MB an
 }
 image_backend="ascii"
-image_source="~/.config/neofetch/snowfox.txt"
+ascii_distro=""
+image_source="${TARGET_HOME}/.config/neofetch/snowfox.txt"
 ascii_colors=(5 7)
 EOF
 
@@ -740,7 +822,6 @@ cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
 ASCIIEOF
 
 # Repo-Configs kopieren
-[[ -f "$CONFIG_DIR/xsettingsd" ]] && rm -f "$CONFIG_DIR/xsettingsd"
 if [[ -d "$SCRIPT_DIR/configs" ]]; then
     cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
     success "Konfigurationsdateien kopiert"
@@ -748,17 +829,39 @@ else
     warn "configs/-Verzeichnis nicht gefunden"
 fi
 
+# Skripte ausführbar machen
+find "$CONFIG_DIR" -name "*.sh" -exec chmod +x {} +
+
+# Standard-Wallpaper initialisieren
+[[ -d "$SCRIPT_DIR/wallpapers" ]] && \
+    cp -r "$SCRIPT_DIR/wallpapers/." "$TARGET_HOME/Pictures/wallpapers/"
+
+DEFAULT_WP=$(ls "$TARGET_HOME/Pictures/wallpapers" 2>/dev/null | grep -iE ".jpg$|.png$|.webp$|.jpeg$" | head -n 1)
+if [[ -n "$DEFAULT_WP" ]]; then
+    echo "#!/bin/sh" > "$TARGET_HOME/.fehbg"
+    echo "feh --bg-fill '$TARGET_HOME/Pictures/wallpapers/$DEFAULT_WP'" >> "$TARGET_HOME/.fehbg"
+    chmod +x "$TARGET_HOME/.fehbg"
+    chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.fehbg"
+    info "Standard-Wallpaper gesetzt: $DEFAULT_WP"
+fi
+
 # Polybar modules-right dynamisch anpassen
 POLYBAR_CONF="$CONFIG_DIR/polybar/config.ini"
 if [[ -f "$POLYBAR_CONF" ]]; then
-    if $IS_LAPTOP; then
-        sed -i 's/^modules-right = memory network pulseaudio tray/modules-right = memory network pulseaudio backlight battery tray/' "$POLYBAR_CONF"
+    if [[ "$IS_LAPTOP" == "true" ]]; then
+        # Hardware-Pfade für Akku und Backlight erkennen
+        BAT_NAME=$(ls /sys/class/power_supply/ | grep -E "BAT|battery" | head -1)
+        [[ -n "$BAT_NAME" ]] && sed -i "s/battery = BAT1/battery = $BAT_NAME/" "$POLYBAR_CONF"
+        
+        BL_NAME=$(ls /sys/class/backlight/ | head -1)
+        [[ -n "$BL_NAME" ]] && sed -i "s/card = intel_backlight/card = $BL_NAME/" "$POLYBAR_CONF"
+
         success "Polybar: Akku + Helligkeit aktiviert (Laptop erkannt)"
+    else
+        # Auf Desktops Akku und Backlight aus der Leiste entfernen
+        sed -i 's/backlight battery//' "$POLYBAR_CONF"
     fi
 fi
-
-[[ -d "$SCRIPT_DIR/wallpapers" ]] && \
-    cp -r "$SCRIPT_DIR/wallpapers/"* "$TARGET_HOME/Pictures/wallpapers/"
 
 if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
     cp "$SCRIPT_DIR/configs/modprobe/amdgpu.conf" /etc/modprobe.d/ 2>/dev/null || true
@@ -831,7 +934,10 @@ MEOF
 success "Standard-Anwendungen gesetzt"
 
 # Berechtigungen — nach allen Kopieroperationen
-chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME"
+chown -R "$TARGET_USER:$TARGET_USER" "$CONFIG_DIR"
+chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/Pictures/wallpapers"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.gtkrc-2.0"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.bash_profile"
 
 # DKMS-Hooks wiederherstellen
 for hook in "${DKMS_HOOKS[@]}"; do

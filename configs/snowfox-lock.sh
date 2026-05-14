@@ -8,8 +8,8 @@ if playerctl status 2>/dev/null | grep -q "Playing"; then
 fi
 
 # Prüfen ob mpv oder ein Browser im Fullscreen ist
-FULLSCREEN=$(xdotool getactivewindow getwindowgeometry 2>/dev/null | grep -c "$(xrandr | grep ' connected primary' | grep -oP '\d+x\d+' | head -1)")
-if [[ "$FULLSCREEN" -gt 0 ]]; then
+IS_FS=$(xprop -id $(xdotool getactivewindow 2>/dev/null) _NET_WM_STATE 2>/dev/null | grep -q "_NET_WM_STATE_FULLSCREEN" && echo "1" || echo "0")
+if [[ "$IS_FS" -eq 1 ]]; then
     # Aktives Fenster prüfen
     WM_CLASS=$(xdotool getactivewindow getwindowclassname 2>/dev/null)
     if echo "$WM_CLASS" | grep -qiE "mpv|vlc|firefox|chromium|brave|chrom"; then

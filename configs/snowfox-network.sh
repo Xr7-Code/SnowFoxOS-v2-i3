@@ -1,15 +1,13 @@
 #!/bin/bash
 # SnowFoxOS — Netzwerk-Manager via Rofi (X11)
 
-NETWORKS=$(nmcli -f IN-USE,SSID,SIGNAL,SECURITY device wifi list 2>/dev/null | tail -n +2 | while IFS= read -r line; do
-    INUSE=$(echo "$line" | cut -c1-8 | xargs)
-    SSID=$(echo "$line" | cut -c9-31 | xargs)
-    SIGNAL=$(echo "$line" | cut -c32-39 | xargs)
-    SECURITY=$(echo "$line" | cut -c40- | xargs)
+NETWORKS=$(nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list 2>/dev/null | while IFS=: read -r INUSE SSID SIGNAL SECURITY; do
     [[ -z "$SSID" || "$SSID" == "--" ]] && continue
-    ICON=$([ "$INUSE" = "*" ] && echo "✓" || echo " ")
-    SEC_LABEL=$([ "$SECURITY" = "--" ] && echo "OPEN" || echo "$SECURITY")
-    printf "%s %-30s %3s%%  %s\n" "$ICON" "$SSID" "$SIGNAL" "$SEC_LABEL"
+    # Maskiere Doppelpunkte in SSIDs zurück (nmcli -t nutzt : als Trenner)
+    SSID_CLEAN=$(echo "$SSID" | sed 's/\\:/:/g')
+    ICON=$([ "$INUSE" = "*" ] && echo "●" || echo "○")
+    SEC_LABEL=$([ -z "$SECURITY" ] && echo "OPEN" || echo "$SECURITY")
+    printf "%s %-30s %3s%%  %s\n" "$ICON" "$SSID_CLEAN" "$SIGNAL" "$SEC_LABEL"
 done)
 
 EXTRAS="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -58,10 +56,12 @@ case "$CHOICE" in
         exit 0
         ;;
     *)
-        SSID=$(echo "$CHOICE" | cut -c3- | awk '{print $1}' | xargs)
+        # SSID extrahieren (Position 3 bis 32 basierend auf dem printf-Format)
+        SSID=$(echo "$CHOICE" | cut -c3-32 | sed 's/  *$//')
         [[ -z "$SSID" ]] && exit 0
 
-        CURRENT=$(nmcli -t -f active,ssid dev wifi | grep "^yes" | cut -d: -f2)
+        # Aktuelle SSID sicher ermitteln (nur wenn WiFi an ist)
+        CURRENT=$(nmcli -t -f active,ssid dev wifi 2>/dev/null | grep "^yes" | cut -d: -f2- | sed 's/\\:/:/g')
         if [[ "$CURRENT" == "$SSID" ]]; then
             PORTAL_URL=$(curl -s -I --max-time 3 http://detectportal.firefox.com/success.txt \
                 | grep -i "^location:" | awk '{print $2}' | tr -d '\r')
@@ -74,7 +74,8 @@ case "$CHOICE" in
             exit 0
         fi
 
-        SECURITY=$(nmcli -f SSID,SECURITY device wifi list | grep "^${SSID} " | awk '{print $NF}' | head -1)
+        # Security-Typ sicher aus dem Choice-String extrahieren (letztes Wort)
+        SECURITY=$(echo "$CHOICE" | rev | awk '{print $1}' | rev)
 
         if nmcli connection show "$SSID" &>/dev/null; then
             nmcli connection up "$SSID" && \

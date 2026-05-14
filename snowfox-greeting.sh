@@ -11,11 +11,12 @@ GRAY='\033[0;37m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# Nur in interaktiven Shells anzeigen, nicht in Scripts
-[[ $- != *i* ]] && exit 0
-# Nur einmal pro Session anzeigen
-[[ -n "$SNOWFOX_GREETED" ]] && exit 0
-export SNOWFOX_GREETED=1
+# Damit die Begrüßung pro Terminal-Fenster nur einmal erscheint,
+# prüfen wir eine temporäre Datei, die an die Terminal-Session gebunden ist.
+SESSION_ID=$(basename "$(tty)")
+STATE_FILE="/tmp/snowfox_greeted_${USER}_${SESSION_ID}"
+[[ -f "$STATE_FILE" ]] && exit 0
+touch "$STATE_FILE"
 
 # Uhrzeit & Datum
 HOUR=$(date +%H)
@@ -49,10 +50,16 @@ QUOTES=(
 QUOTE="${QUOTES[$RANDOM % ${#QUOTES[@]}]}"
 
 echo ""
+# Kleine Animation beim Start
 echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${PURPLE}${BOLD}  🦊 SnowFoxOS${RESET}  ${GRAY}— ${DATE}${RESET}"
+echo -ne "${PURPLE}${BOLD}  🦊 ( - . - )  SnowFoxOS${RESET}\r"
+sleep 0.5
+echo -ne "${PURPLE}${BOLD}  🦊 ( o . o )  SnowFoxOS${RESET}\r"
+sleep 0.5
+echo -e "${PURPLE}${BOLD}  🦊 ( ^ . ^ )  SnowFoxOS${RESET}  ${GRAY}— ${DATE}${RESET}"
 echo -e "${PURPLE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo ""
+
 echo -e "  ${CYAN}${GREETING}, $USER.${RESET}"
 echo ""
 echo -e "  ${GRAY}Uptime:   ${BOLD}${UPTIME}${RESET}"

@@ -120,8 +120,9 @@ Zum Vergleich:
 
 | Befehl | Beschreibung |
 |---|---|
-| `snowfox stream <URL>` | Video/Audio direkt in mpv streamen — kein Browser, kein Tracking |
-| `snowfox download <URL>` | Video oder Audio von 1000+ Seiten herunterladen |
+| `snowfox stream [Suche/URL]` | Video/Audio suchen oder via URL direkt in mpv streamen — kein Browser, kein Tracking |
+| `snowfox download [Suche/URL]` | Video oder Audio suchen oder via URL herunterladen |
+| `snowfox fetch <URL>` | Highspeed Download einer Datei über 16 parallele Verbindungen |
 
 ### System-Profile
 
@@ -136,9 +137,9 @@ Zum Vergleich:
 
 ### Warum `snowfox stream`?
 
-Du könntest YouTube im Browser öffnen. Aber jedes Mal wenn du das tust trackt Google was du schaust, wie lange, und was du danach tust. Der Algorithmus ist darauf ausgelegt dich zu halten.
+Du könntest YouTube im Browser öffnen. Aber jedes Mal wenn du das tust, trackt Google dein Verhalten. Der Algorithmus ist darauf ausgelegt, dich auf der Plattform zu halten.
 
-`snowfox stream` spielt jede URL direkt in mpv — kein JavaScript, kein Tracking, keine Empfehlungen, kein Autoplay. Nur das Video. Funktioniert mit YouTube, Twitch, SoundCloud, Vimeo, TikTok und über 1000 weiteren Seiten.
+`snowfox stream` erlaubt es dir, direkt vom Terminal aus zu suchen und das Ergebnis in mpv abzuspielen — kein JavaScript, kein Tracking, keine Empfehlungen, kein Autoplay. Nur das Medium.
 
 Deine Aufmerksamkeit gehört dir.
 
@@ -195,6 +196,7 @@ Nach dem Neustart startet i3 automatisch von TTY1.
 | `Super + Space` | App-Launcher (Rofi) |
 | `Super + E` | Dateimanager (Thunar) |
 | `Super + N` | Netzwerk-Manager |
+| `Super + W` | Wallpaper-Selector |
 | `Super + P` | Display-Konfiguration |
 | `Super + L` | Bildschirm sperren |
 | `Super + Q` | Fenster schließen |
