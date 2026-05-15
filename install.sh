@@ -156,7 +156,7 @@ if [[ $XANMOD_EXIT -eq 0 ]]; then
     CURRENT_KERNEL=$(uname -r)
     # GRUB für Plymouth (Boot-Logo) vorbereiten
     if [[ -f /etc/default/grub ]]; then
-        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 quiet splash"/' /etc/default/grub
+        sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 quiet splash amdgpu.sg_display=0"/' /etc/default/grub
         sed -i 's/quiet splash quiet splash/quiet splash/g' /etc/default/grub
         sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' /etc/default/grub
     fi
@@ -264,6 +264,10 @@ EOF
 elif $HAS_AMD; then
     info "AMD GPU erkannt — Nutze Mesa..."
     apt-get install -y firmware-amd-graphics mesa-vulkan-drivers mesa-va-drivers
+    
+    # Stability Fix für AMD Freezes (Scatter/Gather Bug)
+    mkdir -p /etc/modprobe.d
+    echo "options amdgpu sg_display=0" > /etc/modprobe.d/amdgpu-stability.conf
     success "AMD Stack installiert"
 else
     info "Intel Grafik erkannt..."
