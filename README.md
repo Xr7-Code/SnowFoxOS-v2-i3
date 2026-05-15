@@ -193,6 +193,7 @@ Nach dem Neustart startet i3 automatisch von TTY1.
 | Kürzel | Aktion |
 |---|---|
 | `Super + Return` | Terminal (Kitty) |
+| `Super + Tab` | Fenster wechseln (Switcher) |
 | `Super + Space` | App-Launcher (Rofi) |
 | `Super + E` | Dateimanager (Thunar) |
 | `Super + N` | Netzwerk-Manager |
